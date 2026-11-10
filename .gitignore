@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+factory.db
+data/generated/*
+data/raw/*
+lakehouse/*/*
+!**/.gitkeep
+.venv/
+.DS_Store
+.streamlit/secrets.toml
+.ipynb_checkpoints/

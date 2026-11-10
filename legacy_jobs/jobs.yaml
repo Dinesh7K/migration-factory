@@ -1,0 +1,57 @@
+# Job manifest. One entry per legacy program.
+#   keys:         output columns that identify a row (used by reconciliation)
+#   output:       table the job writes
+#   feeds_report: downstream report (empty = nothing known reads it)
+#   risk:         regulatory | internal (regulatory = mandatory human sign-off, never auto-retired)
+#   wave:         migration batch
+jobs:
+  - job_id: J01
+    lang: tsql
+    source_path: legacy_jobs/tsql/J01_motor_claims.sql
+    keys: [policy_id]
+    output: motor_paid_by_policy
+    feeds_report: Finance - Motor reserves
+    risk: regulatory
+    wave: 1
+  - job_id: J02
+    lang: tsql
+    source_path: legacy_jobs/tsql/J02_motor_claims_copy.sql
+    keys: [policy_id]
+    output: motor_paid_by_policy_v2
+    feeds_report: Claims ops dashboard
+    risk: internal
+    wave: 1
+  - job_id: J03
+    lang: tsql
+    source_path: legacy_jobs/tsql/J03_claims_by_region.sql
+    keys: [region]
+    output: claims_by_region
+    feeds_report:
+    risk: internal
+    wave: 1
+  - job_id: J04
+    lang: tsql
+    source_path: legacy_jobs/tsql/J04_claims_by_year.sql
+    keys: [claim_year]
+    output: claims_by_year
+    feeds_report: Actuarial - Annual claims
+    risk: regulatory
+    wave: 1
+  - job_id: J05
+    lang: tsql
+    source_path: legacy_jobs/tsql/J05_home_claims.sql
+    keys: [policy_id]
+    output: home_paid_by_policy
+    feeds_report: Finance - Home reserves
+    risk: regulatory
+    wave: 2
+  # SAS example: enable once legacy_jobs/expected/J10.csv exists
+  # - job_id: J10
+  #   lang: sas
+  #   source_path: legacy_jobs/sas/J10_running_total.sas
+  #   keys: [policy_id]
+  #   output: running_paid
+  #   reads: [claims]
+  #   feeds_report: Finance - Claims ledger
+  #   risk: regulatory
+  #   wave: 2

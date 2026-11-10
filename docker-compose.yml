@@ -1,0 +1,10 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: migrateguard-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-MigrateGuard!2026}"
+    ports:
+      - "1433:1433"
