@@ -45,6 +45,80 @@ jobs:
     feeds_report: Finance - Home reserves
     risk: regulatory
     wave: 2
+  # Wave 3: harder jobs (joins, IN, LIKE, CASE, windows, dates, integer division).
+  # Wave 4: jobs that reuse the rules learned in wave 3.
+  - job_id: J06
+    lang: tsql
+    source_path: legacy_jobs/tsql/J06_open_claims_by_region.sql
+    keys: [region]
+    output: open_claims_by_region
+    feeds_report: Claims ops - Open exposure
+    risk: internal
+    wave: 3
+  - job_id: J07
+    lang: tsql
+    source_path: legacy_jobs/tsql/J07_claims_per_policy.sql
+    keys: [line_of_business]
+    output: claims_per_policy
+    feeds_report: Pricing - Claim frequency
+    risk: internal
+    wave: 3
+  - job_id: J08
+    lang: tsql
+    source_path: legacy_jobs/tsql/J08_closed_claims.sql
+    keys: [policy_id]
+    output: closed_paid_by_policy
+    feeds_report: Finance - Settlements
+    risk: regulatory
+    wave: 3
+  - job_id: J09
+    lang: tsql
+    source_path: legacy_jobs/tsql/J09_claim_size_bands.sql
+    keys: [band]
+    output: claim_size_bands
+    feeds_report: Actuarial - Severity bands
+    risk: regulatory
+    wave: 3
+  - job_id: J11
+    lang: tsql
+    source_path: legacy_jobs/tsql/J11_largest_travel_claim.sql
+    keys: [policy_id]
+    output: largest_travel_claim
+    feeds_report: Claims ops - Large loss watch
+    risk: internal
+    wave: 3
+  - job_id: J12
+    lang: tsql
+    source_path: legacy_jobs/tsql/J12_payments_2022.sql
+    keys: [policy_id]
+    output: payments_2022_by_policy
+    feeds_report: Finance - Cash paid 2022
+    risk: regulatory
+    wave: 3
+  - job_id: J13
+    lang: tsql
+    source_path: legacy_jobs/tsql/J13_days_to_first_claim.sql
+    keys: [policy_id]
+    output: days_to_first_claim
+    feeds_report: Underwriting - Early claims
+    risk: internal
+    wave: 3
+  - job_id: J14
+    lang: tsql
+    source_path: legacy_jobs/tsql/J14_home_settled.sql
+    keys: [policy_id]
+    output: home_settled_by_policy
+    feeds_report: Finance - Home settlements
+    risk: regulatory
+    wave: 4
+  - job_id: J15
+    lang: tsql
+    source_path: legacy_jobs/tsql/J15_open_frequency_by_year.sql
+    keys: [claim_year]
+    output: open_frequency_by_year
+    feeds_report: Pricing - Open claim frequency
+    risk: internal
+    wave: 4
   # SAS example: enable once legacy_jobs/expected/J10.csv exists
   # - job_id: J10
   #   lang: sas

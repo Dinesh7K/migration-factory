@@ -40,16 +40,16 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 |---|---|---|---|
 | `factory/config.py` | settings | DONE | — |
 | `factory/registry.py` | SQLite: jobs, audit_log, rules, archive_index | DONE | everyone |
-| `factory/llm.py` | the ONLY LLM entry point | STUB | agent dev |
+| `factory/llm.py` | the ONLY LLM entry point (ollama / openai / azure / offline) | DONE for Ollama (openai/azure untested) | agent dev |
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
-| `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done) | data engineer |
-| `factory/runners/spark.py` | M2 run Spark SQL on PySpark / DuckDB fallback | PARTIAL (DuckDB done) | data engineer |
+| `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
+| `factory/runners/spark.py` | M2 run Spark SQL on PySpark / DuckDB fallback | DONE (DuckDB + PySpark) | data engineer |
 | `factory/triage/triage.py` | M3 lineage, duplicates (with reconcile proof), unused, risk, waves | PARTIAL (LLM label TODO) | agent dev |
 | `factory/translate/translate.py` | M4 sqlglot → rules → LLM | PARTIAL (sqlglot + rules done) | agent dev |
 | `factory/breaker/breaker.py` | M5 adversarial rows | PARTIAL (deterministic done) | data/testing |
 | `factory/reconcile/reconcile.py` | M6 counts, totals, field diffs | DONE + tested | data engineer |
-| `factory/agents/migrate.py` | M7 the loop | PARTIAL (loop done, fixer offline) | agent dev |
-| `factory/patterns/rules.py` | M8 save/apply rules | DONE (basic) | agent dev |
+| `factory/agents/migrate.py` | M7 the loop | DONE (LLM fixer with offline fallback) | agent dev |
+| `factory/patterns/rules.py` | M8 save/apply rules (4 patterns) | DONE (basic) | agent dev |
 | `factory/archive/archive.py` | snapshot + restore retired jobs | DONE (basic) | data engineer |
 | `app/` | Streamlit: Triage (approve/restore), Review (approve), Dashboard (KPIs, ROI) | WORKING (polish TODO) | business lead |
 | `docs/` | submission docs | TEMPLATES | business lead |
@@ -103,11 +103,11 @@ Rule (registry `rules` table):
 ## 7. Build order (remaining work, in priority order)
 
 ### P0 — the demo must run on real engines
-- [ ] `llm.py`: implement `complete()` for OpenAI / Azure OpenAI (env vars in `.env.example`); log prompt + response; keep the offline fallback.
-- [ ] `agents/migrate.py`: replace `offline_fix()` usage with `llm_fix()` when an API key is set (prompt in `factory/prompts/fix.md`); return plain-English reason.
-- [ ] `runners/spark.py`: implement `_run_pyspark()`.
-- [ ] `runners/legacy.py`: implement `_run_sqlserver()` (load tables with pandas `to_sql` via SQLAlchemy + pyodbc).
-- [ ] Write remaining legacy jobs: target 10–15 T-SQL (joins, window functions, CASE, dates, MERGE, NULL handling, rounding) + 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE).
+- [x] `llm.py`: `complete()` for a local Ollama model (`LLM_PROVIDER=ollama`, no API cost) plus OpenAI / Azure OpenAI (untested); prompt + response logged; offline fallback kept.
+- [x] `agents/migrate.py`: `llm_fix()` when a provider is set (prompt in `factory/prompts/fix.md`), falling back to `offline_fix()`; returns plain-English reason. When the LLM picks a library pattern the rewrite comes from the library.
+- [x] `runners/spark.py`: `_run_pyspark()` (PySpark 4, Java 17/21).
+- [ ] `runners/legacy.py`: `_run_sqlserver()` is written (pandas `to_sql` via SQLAlchemy + pyodbc) but has never been run against a live server: test it.
+- [ ] Legacy jobs: 14 T-SQL done (J01–J09, J11–J15: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
 
 ### P1 — what wins
 - [x] `triage/triage.py`: duplicate proof + complexity score. - [ ] LLM business label (prompts/triage.md).
@@ -123,8 +123,12 @@ Rule (registry `rules` table):
 
 ## 7b. Current demo output (keep it this way)
 `python run.py demo` → J02 proposed retire (duplicate, proven), J03 proposed retire (unused), both archived;
-J01 FAIL £500 on one policy → offline fixer applies `string_equality` → PASS → approved → rule R01;
-J04 PASS; J05 (wave 2) passes first try with `sqlglot+rules:R01`; fixer calls wave 1 = 1, wave 2 = 0.
+J01 FAIL £500 on one policy → fixer applies `string_equality` → PASS → approved → rule R01;
+J04 PASS; J05 (wave 2) passes first try with `sqlglot+rules:R01`.
+Wave 3: J06 (`string_in_list`), J07 (`integer_division`), J08 (`like_case_insensitive`) each FAIL → fix → PASS →
+rules R02–R04; J09, J11, J12, J13 pass first try. Wave 4: J14 and J15 pass first try using the new rules.
+Fixer calls: wave 1 = 1, wave 2 = 0, wave 3 = 3, wave 4 = 0. Same result with `LLM_PROVIDER=ollama` and `offline`
+(`tests/test_pipeline.py::test_demo_story_end_to_end` checks the offline run).
 
 ## 8. Commands
 ```
@@ -141,5 +145,5 @@ streamlit run app/app.py
 - Python 3.11+, type hints, small pure functions, docstrings stating inputs/outputs.
 - Prompts live in `factory/prompts/*.md`, never inline in code.
 - Every module function that changes state writes an audit entry.
-- Keep the demo fast (< 30 s end to end).
+- Keep the demo fast (< 30 s end to end; about 1 s offline, close to 30 s with the local Ollama model).
 - Declare AI tools used in the README "AI tools used" section (hackathon rule).

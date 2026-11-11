@@ -8,11 +8,13 @@ After MAX_ATTEMPTS failures → `needs_human`. Humans approve via approve_job() 
 Fixer:
   llm_fix      LLM reads code + diffs, returns new code + plain-English reason (prompts/fix.md)
   offline_fix  deterministic: tries known patterns from the pattern library (no key needed)
-TODO (P0, agent dev): verify llm_fix with a real key; keep offline_fix as fallback.
+fix() uses llm_fix when a provider is configured and falls back to offline_fix if the LLM is
+unreachable or returns no usable code, so the demo never depends on the model being up.
 """
 from __future__ import annotations
 
 import json
+import re
 
 import pandas as pd
 
@@ -36,21 +38,72 @@ def offline_fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, 
     return None, "No known pattern explains the mismatch; needs a human.", None
 
 
+def _field(answer: str, label: str) -> str:
+    """Return the text after `LABEL:` on its line in an LLM answer, or ''."""
+    m = re.search(rf"^\W*{label}\W*:\s*(.+)$", answer, flags=re.IGNORECASE | re.MULTILINE)
+    return m.group(1).strip(" *`") if m else ""
+
+
+def _candidates(code: str) -> dict[str, str]:
+    """Known patterns that actually change this SQL → {pattern_name: rewritten_sql}."""
+    out = {}
+    for name in rules.PATTERNS:
+        try:
+            new_code, n = rules.apply_pattern(name, code)
+        except Exception:  # SQL the library cannot parse: no candidates from this pattern
+            continue
+        if n and new_code != code:
+            out[name] = new_code
+    return out
+
+
+def _compact(result: ReconResult, n: int = 5) -> str:
+    """Reconciliation result as short JSON: totals plus the first few diffs (keeps the prompt small)."""
+    d = result.to_dict()
+    for k in ("field_diffs", "missing_in_new", "extra_in_new"):
+        d[f"{k}_count"], d[k] = len(d[k]), d[k][:n]
+    return json.dumps(d, default=str)
+
+
 def llm_fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str, str | None]:
+    """Ask the LLM to diagnose the mismatch; return (new_code, reason, pattern_name).
+
+    The prompt lists the library patterns that apply to this SQL, each with its rewrite. If the LLM
+    picks one, the rewrite comes from the library, not from the LLM's own SQL: that is the exact
+    transformation saved as a rule on approval, so the rule reused in later waves is the one
+    reconciliation proved here. Otherwise the LLM's SQL is used (reconciliation decides if it is right)."""
     source = (config.ROOT / job["source_path"]).read_text()
-    prompt = llm.load_prompt("fix", lang=job["lang"], source=source, code=code,
-                             diffs=json.dumps(result.to_dict(), default=str)[:6000],
-                             patterns=", ".join(rules.PATTERNS))
+    candidates = _candidates(code)
+    known = "\n".join(f"- {name}: {rules.PATTERNS[name][1]}\n  Rewritten SQL: {sql}"
+                      for name, sql in candidates.items())
+    prompt = llm.load_prompt("fix", lang=job["lang"], source=source, code=code, diffs=_compact(result),
+                             patterns=known or "(none of the known patterns applies to this SQL)")
     answer = llm.complete(prompt, job_id=job["job_id"], purpose="fix")
-    reason = answer.split("```")[0].strip() or "LLM fix"
-    pattern = next((p for p in rules.PATTERNS if p in answer), None)
-    return llm.extract_code(answer), reason, pattern
+    reason = _field(answer, "REASON") or answer.split("```")[0].strip()[:300] or "LLM fix"
+    pattern = _field(answer, "PATTERN")
+    if pattern in candidates:
+        return candidates[pattern], reason, pattern
+    new_code = llm.extract_code(answer) if "```" in answer else None
+    return new_code, reason, None
 
 
 def fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str, str | None]:
-    out = llm_fix(job, code, result) if llm.available() else offline_fix(job, code, result)
-    registry.log(job["job_id"], "fixer", "fix", {"mode": "llm" if llm.available() else "offline",
-                                                  "reason": out[1], "pattern": out[2], "code": out[0]})
+    """Propose corrected code: LLM first when configured, deterministic patterns as fallback."""
+    mode, out = "offline", None
+    if llm.available():
+        try:
+            out = llm_fix(job, code, result)
+            if out[0] and out[0].strip() != code.strip():
+                mode = "llm"
+            else:
+                out = None  # no code, or the same code again: not a fix
+        except llm.LLMUnavailable as e:
+            print(f"    fixer: LLM unavailable ({e}); using offline patterns")
+    if out is None:
+        out = offline_fix(job, code, result)
+        mode = "offline_fallback" if llm.available() else "offline"
+    registry.log(job["job_id"], "fixer", "fix", {"mode": mode, "reason": out[1], "pattern": out[2],
+                                                  "code": out[0]})
     return out
 
 

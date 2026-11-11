@@ -37,13 +37,16 @@ becomes a rule reused on every similar job.
 ## Quick start
 ```bash
 pip install -r requirements.txt
-cp .env.example .env            # add an LLM key (optional: runs offline without one)
+cp .env.example .env            # optional: LLM_PROVIDER=ollama for a free local model (runs offline without one)
 python run.py demo              # end-to-end demo in the terminal
 streamlit run app/app.py        # review screen + dashboard
 pytest -q
 ```
-Optional real engines: `docker compose up -d` (SQL Server) with `LEGACY_MODE=sqlserver`, and Java 17 +
-`NEW_MODE=spark` for PySpark. Defaults use a SQL Server text-semantics emulator (SQLite with a custom collation)
+Local LLM (no API cost): install [Ollama](https://ollama.com), `ollama pull qwen2.5-coder`, set
+`LLM_PROVIDER=ollama` in `.env`. If the model is unreachable the fixer falls back to the offline pattern library.
+
+Optional real engines: `docker compose up -d` (SQL Server) with `LEGACY_MODE=sqlserver`, and Java 17/21 +
+`pip install "pyspark>=4,<5"` + `NEW_MODE=spark` for PySpark. Defaults use a SQL Server text-semantics emulator (SQLite with a custom collation)
 and DuckDB (Spark-like text semantics) so the demo runs anywhere.
 
 ## Repo structure
@@ -67,5 +70,5 @@ See [`docs/responsible_ai.md`](docs/responsible_ai.md).
 
 ## AI tools used (declaration)
 - _e.g. Claude (Anthropic) / Claude Code — scaffolding, boilerplate, test data, documentation._
-- _LLM used inside the product: <OpenAI / Azure OpenAI model name>._
+- LLM used inside the product: `qwen2.5-coder` (7B) running locally through Ollama; OpenAI / Azure OpenAI are optional providers.
 - _Existing open-source code used: sqlglot, DuckDB, pandas, Faker, networkx, Streamlit._

@@ -57,7 +57,20 @@ def demo() -> None:
             approve_job(j["job_id"], "reviewer")
             print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
 
-    print(f"\n[5] DASHBOARD — fixer calls: wave 1 = {fixer_calls(1)}, wave 2 = {fixer_calls(2)}")
+    print("\n[5] WAVE 3 — harder jobs: new kinds of gap → fixed, proven, saved as new rules")
+    for j in migrate_wave(3, tables):
+        if j["status"] == "ready_for_review":
+            approve_job(j["job_id"], "reviewer")
+            print(f"  reviewer approved {j['job_id']}" + (f" → rule saved ({j['fix_pattern']})" if j["fix_pattern"] else ""))
+
+    print("\n[6] WAVE 4 — the new rules applied up front")
+    for j in migrate_wave(4, tables):
+        if j["status"] == "ready_for_review":
+            approve_job(j["job_id"], "reviewer")
+            print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
+
+    waves = sorted({j["wave"] for j in registry.list_jobs()})
+    print("\n[7] DASHBOARD — fixer calls: " + ", ".join(f"wave {w} = {fixer_calls(w)}" for w in waves))
     status()
 
 

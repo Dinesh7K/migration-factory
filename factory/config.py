@@ -19,7 +19,8 @@ DB_PATH = Path(os.getenv("FACTORY_DB", ROOT / "factory.db"))
 
 LEGACY_MODE = os.getenv("LEGACY_MODE", "emulator")   # emulator | sqlserver
 NEW_MODE = os.getenv("NEW_MODE", "duckdb")           # duckdb | spark
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "offline")  # offline | openai | azure
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "offline")  # offline | openai | azure | ollama
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120"))  # seconds per call; local models are slow on first load
 
 MAX_ATTEMPTS = 3
 # Relative tolerance for float comparison: engines sum floats in different orders.

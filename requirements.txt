@@ -8,8 +8,8 @@ networkx>=3.2
 streamlit>=1.35
 python-dotenv>=1.0
 pytest>=8
-# LLM (pick one)
+# LLM client (also used for the local Ollama endpoint)
 openai>=1.30
 # Optional real engines
-# pyspark==3.5.*          # needs Java 17; NEW_MODE=spark
+# pyspark>=4,<5           # needs Java 17 or 21; NEW_MODE=spark
 # pyodbc>=5 sqlalchemy>=2 # SQL Server; LEGACY_MODE=sqlserver
