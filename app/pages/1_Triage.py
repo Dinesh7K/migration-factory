@@ -46,6 +46,10 @@ for j in registry.list_jobs():
     with st.expander(f"{j['job_id']} · {j['status']} · {ai.get('summary', '')}"):
         st.markdown(f"**Declared risk:** {j['risk']} · **AI opinion:** {ai.get('risk') or 'none'}"
                     + (f" ({ai['risk_reason']})" if ai.get("risk_reason") else ""))
+        d = lin.get("difficulty") or {}
+        if d:
+            st.markdown(f"**Difficulty:** {d['tier']} ({d['score']}/100) · **Route:** {d['route']} · "
+                        + "; ".join(d["reasons"]))
         st.markdown("**Known legacy-vs-Spark gaps:** " + (", ".join(lin.get("known_gaps") or []) or "none found"))
         how = {"parser": "parser (exact)", "parser_partial": "parser, partial", "ai_estimated": "AI estimate",
                "none": "not available"}.get(lin.get("source"), "parser (exact)")

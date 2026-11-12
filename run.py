@@ -42,7 +42,8 @@ def demo() -> None:
     print("\n[2] TRIAGE — what NOT to migrate (proposals only, human decides)")
     for r in triage(tables):
         flag = f"→ {r['status']}: {r['reason']}" if r["status"] != "pending" else f"→ migrate in wave {r['wave']}"
-        print(f"  {r['job_id']} complexity={r['complexity']:<3} {flag}")
+        d = r["lineage"]["difficulty"]
+        print(f"  {r['job_id']} {d['tier']:<6} complexity={r['complexity']:<3} route={d['route']:<7} {flag}")
         gaps = r["lineage"]["known_gaps"]
         print(f"       purpose: {r['triage_ai']['summary']}" + (f"  [exposed to: {', '.join(gaps)}]" if gaps else ""))
         if r["lineage"]["source"] not in ("parser", "none"):

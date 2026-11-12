@@ -17,8 +17,11 @@ For each job in legacy_jobs/jobs.yaml:
   unused      output feeds no report AND no other job reads it → proposed_retire
   duplicate   same logic fingerprint as an earlier job AND outputs reconcile on real data
               → proposed_retire (proof, not guesswork)
-  complexity  0–100 from joins, subqueries, windows, CASE, etc.
-  risk/wave   from jobs.yaml (regulatory jobs are never auto-retired)
+  difficulty  0–100 score, an easy/medium/hard tier, the reasons in plain English and the
+              migration route (sqlglot | script | llm), for T-SQL AND SAS. Measured from the code
+              (joins, windows, statements; SAS DATA steps, MERGE, RETAIN, FIRST./LAST., macros).
+  risk/wave   from jobs.yaml (regulatory jobs are never auto-retired); a job with no wave gets
+              one from its tier (easy first)
   AI review   the LLM writes a plain-English purpose for the (undocumented) job and gives a second
               opinion on its risk (prompts/triage.md). ADVISORY ONLY: it never changes a status, and
               it can only escalate ("this looks regulatory"), never downgrade. Without an LLM the
@@ -259,11 +262,53 @@ def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dic
     return {**_EMPTY, "reads": job.get("reads", [])}
 
 
+# SAS constructs that drive migration effort: (label shown to the reviewer, pattern, weight).
+_SAS_FEATURES = [
+    ("DATA step", r"(?:^|;)\s*data\s+[\w.]+", 10),
+    ("PROC SQL", r"\bproc\s+sql\b", 5),
+    ("PROC SORT", r"\bproc\s+sort\b", 5),
+    ("summary procedure (MEANS/SUMMARY/FREQ)", r"\bproc\s+(means|summary|freq|tabulate|univariate)\b", 10),
+    ("PROC TRANSPOSE (reshapes rows to columns)", r"\bproc\s+transpose\b", 20),
+    ("MERGE (joins datasets by position in BY order)", r"(?:^|;)\s*merge\b", 15),
+    ("BY-group logic with FIRST./LAST.", r"\b(first|last)\.\w+", 15),
+    ("RETAIN (carries values from row to row)", r"(?:^|;)\s*retain\b", 15),
+    ("LAG/DIF (reads the previous row)", r"\b(lag|dif)\d*\s*\(", 15),
+    ("arrays or DO loops", r"(?:^|;)\s*(array|do)\b", 15),
+    ("macro code (text generated at run time)", r"%macro\b|%do\b|%if\b|%let\b|&\w+", 25),
+]
+
+
+def _sas_features(job: dict) -> list[tuple[str, int]]:
+    """(construct, weight) for every SAS construct found in the program, comments ignored.
+    Statement keywords are matched after a line start or a `;`, since SAS statements end with `;`."""
+    text = re.sub(r"/\*.*?\*/", " ", _source(job), flags=re.DOTALL)
+    return [(label, w) for label, pattern, w in _SAS_FEATURES
+            if re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)]
+
+
+def _tsql_features(statements: list[exp.Expression]) -> list[str]:
+    """Plain-English list of what makes a T-SQL job harder than a flat query."""
+    def n(kind) -> int:
+        return sum(len(list(t.find_all(kind))) for t in statements)
+    counts = [(n(exp.Join), "join"), (n(exp.Subquery), "subquery"), (n(exp.CTE), "common table expression"),
+              (n(exp.Window), "window function"), (n(exp.Case), "CASE expression"),
+              (n(exp.SetOperation), "UNION/INTERSECT/EXCEPT")]
+    found = [f"{c} {name}{'s' if c > 1 else ''}" for c, name in counts if c]
+    if len(statements) > 1:
+        found.insert(0, f"{len(statements)} statements")
+    return found
+
+
 def complexity(job: dict) -> int:
-    """0–100 from joins, subqueries, windows, CASE and filters, summed over every statement, plus
-    10 per extra statement. SAS is a flat 70; SQL the parser cannot read is 100."""
+    """Migration difficulty score, 0–100.
+
+    T-SQL: joins, subqueries, windows, CASE and filters, summed over every statement, plus 10 per
+    extra statement and 30 per kind of step the parser cannot follow (UPDATE, MERGE, procedures).
+    SQL the parser cannot read at all is 100.
+    SAS: 20 (no parser, so the LLM must translate it) plus a weight per construct found
+    (DATA step, MERGE, RETAIN, FIRST./LAST., macros, ...)."""
     if job["lang"] != "tsql":
-        return 70
+        return min(20 + sum(w for _, w in _sas_features(job)), 100)
     statements = _statements(job)
     if not statements:
         return 100
@@ -274,7 +319,35 @@ def complexity(job: dict) -> int:
         score += 15 * len(list(t.find_all(exp.Window)))
         score += 10 * len(list(t.find_all(exp.Case)))
         score += 5 * len(list(t.find_all(exp.Where)))
-    return min(score, 100)
+    opaque = {t.key for t in statements
+              if not (_written_table(t) or isinstance(t, (exp.Query, exp.Create) + _NEUTRAL))}
+    return min(score + 30 * len(opaque), 100)
+
+
+def difficulty(job: dict) -> dict:
+    """How hard a job is to migrate and which path it takes, for any T-SQL or SAS job.
+
+    Returns {"tier": "easy" | "medium" | "hard", "score": 0–100, "reasons": [plain-English causes],
+    "route": "sqlglot" (one query: rule-based translation) | "script" (multi-statement T-SQL)
+             | "llm" (SAS, procedures, unparseable SQL: the LLM must translate)}.
+    Measured from the job's own code, never from table names, so it works on any dataset.
+    Tiers: easy < 30 ≤ medium < 60 ≤ hard."""
+    score = complexity(job)
+    if job["lang"] != "tsql":
+        reasons = [label for label, _ in _sas_features(job)] or ["plain SAS with no row-order logic"]
+        reasons.insert(0, f"{job['lang'].upper()}: no parser, the LLM translates it")
+        route = "llm"
+    else:
+        statements = _statements(job)
+        single = len(statements) == 1 and isinstance(statements[0], exp.Query) and not statements[0].args.get("into")
+        opaque = sorted({t.key.upper() for t in statements
+                         if not (_written_table(t) or isinstance(t, (exp.Query, exp.Create) + _NEUTRAL))})
+        reasons = _tsql_features(statements) if statements else ["the SQL parser cannot read it"]
+        reasons += [f"{k} step the parser cannot follow" for k in opaque]
+        route = "sqlglot" if single else "llm" if (opaque or not statements) else "script"
+        reasons = reasons or ["one flat query"]
+    tier = "easy" if score < 30 else "medium" if score < 60 else "hard"
+    return {"tier": tier, "score": score, "reasons": reasons, "route": route}
 
 
 def fingerprint(job: dict) -> str | None:
@@ -384,14 +457,19 @@ def triage(tables, actor: str = "triage_agent") -> list[dict]:
         if note["escalate"] and status == "proposed_retire":
             reason += f" AI second opinion: this looks regulatory ({note['risk_reason']}) — check before approving."
 
+        diff = difficulty(j)
+        lin[jid]["difficulty"] = diff
         record = {**{k: j.get(k) for k in ("job_id", "lang", "source_path", "keys", "output", "risk",
                                             "wave", "feeds_report")},
                   "status": status, "reason": reason, "lineage": lin[jid], "triage_ai": note, **extra,
-                  "complexity": complexity(j)}
+                  "complexity": diff["score"]}
+        if not record["wave"]:  # no wave in the manifest: easy jobs first, hard jobs last
+            record["wave"] = {"easy": 1, "medium": 2, "hard": 3}[diff["tier"]]
         registry.upsert_job(record)
         registry.log(jid, actor, "triaged", {"status": status, "reason": reason, "complexity": record["complexity"],
                                              "known_gaps": lin[jid]["known_gaps"],
-                                             "lineage_source": lin[jid]["source"], "ai_review": note})
+                                             "difficulty": diff, "lineage_source": lin[jid]["source"],
+                                             "ai_review": note})
         results.append(record)
     return results
 

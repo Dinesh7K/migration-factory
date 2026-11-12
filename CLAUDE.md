@@ -44,7 +44,7 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
 | `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
 | `factory/runners/spark.py` | M2 run Spark SQL on PySpark (default) / DuckDB fallback | DONE + tested (`tests/test_spark.py`) | data engineer |
-| `factory/triage/triage.py` | M3 column-level lineage, known gaps, unsupported-job guard, duplicates (with reconcile proof), unused, waves, advisory AI review | DONE + tested (`tests/test_triage.py`) | agent dev |
+| `factory/triage/triage.py` | M3 difficulty (easy/medium/hard + reasons + route) for T-SQL and SAS, column-level lineage, known gaps, unsupported-job guard, duplicates (with reconcile proof), unused, waves, advisory AI review | DONE + tested (`tests/test_triage.py`) | agent dev |
 | `factory/translate/translate.py` | M4 sqlglot → rules → LLM | PARTIAL (sqlglot + rules done) | agent dev |
 | `factory/breaker/breaker.py` | M5 adversarial rows | PARTIAL (deterministic done) | data/testing |
 | `factory/reconcile/reconcile.py` | M6 counts, totals, field diffs | DONE + tested | data engineer |

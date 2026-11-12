@@ -197,3 +197,57 @@ def test_ai_estimate_is_only_used_when_the_parser_cannot_do_it(schema, monkeypat
 def test_unusable_ai_lineage_answer_gives_no_lineage(schema, monkeypatch):
     _fake_llm(monkeypatch, "The program reads claims.")
     assert T.lineage(SAS, schema, use_llm=True)["source"] == "none"
+
+
+def _sas(tmp_path, text: str) -> dict:
+    f = tmp_path / "job.sas"
+    f.write_text(text)
+    return {"job_id": "JS", "lang": "sas", "source_path": str(f), "keys": ["k"], "output": "o",
+            "risk": "internal", "feeds_report": "r"}
+
+
+def test_difficulty_of_tsql_queries_comes_with_reasons():
+    easy = T.difficulty(J01)
+    assert (easy["tier"], easy["route"], easy["reasons"]) == ("easy", "sqlglot", ["one flat query"])
+    j11 = {**J01, "source_path": "legacy_jobs/tsql/J11_largest_travel_claim.sql"}
+    medium = T.difficulty(j11)
+    assert medium["tier"] == "medium" and "1 window function" in medium["reasons"]
+
+
+def test_difficulty_routes_scripts_and_steps_the_parser_cannot_follow(tmp_path):
+    script = T.difficulty(_job(tmp_path, SCRIPT))
+    assert script["route"] == "script" and script["tier"] == "hard" and "5 statements" in script["reasons"]
+    merge = T.difficulty(_job(tmp_path, "SELECT policy_id INTO #p FROM claims; MERGE INTO policies AS t USING #p AS s "
+                                        "ON t.policy_id = s.policy_id WHEN MATCHED THEN UPDATE SET t.region = 'X'; "
+                                        "SELECT region AS k, COUNT(*) AS n FROM policies GROUP BY region;"))
+    assert merge["route"] == "llm" and merge["tier"] == "hard"
+    assert "MERGE step the parser cannot follow" in merge["reasons"]
+    unreadable = T.difficulty(_job(tmp_path, "SELECT FROM WHERE ("))
+    assert (unreadable["tier"], unreadable["score"], unreadable["route"]) == ("hard", 100, "llm")
+
+
+def test_difficulty_of_sas_is_graded_from_its_constructs(tmp_path):
+    simple = T.difficulty(_sas(tmp_path, "proc sql; create table o as select policy_id, sum(paid_amount) as p "
+                                         "from claims group by policy_id; quit;"))
+    assert (simple["tier"], simple["route"]) == ("easy", "llm") and "PROC SQL" in simple["reasons"]
+    j10 = T.difficulty(SAS)
+    assert j10["tier"] == "hard"
+    assert any("RETAIN" in r for r in j10["reasons"]) and any("FIRST./LAST." in r for r in j10["reasons"])
+
+
+def test_sas_constructs_are_found_on_one_line_and_not_in_comments(tmp_path):
+    one_line = T.difficulty(_sas(tmp_path, "%macro go(y); data o; merge a b; by k; retain t 0; run; %mend;"))
+    for expected in ("DATA step", "MERGE", "RETAIN", "macro code"):
+        assert any(expected in r for r in one_line["reasons"]), expected
+    commented = T.difficulty(_sas(tmp_path, "/* retain x; merge a b; %macro m; */ proc sql; select 1; quit;"))
+    assert not any("RETAIN" in r or "MERGE" in r or "macro" in r for r in commented["reasons"])
+
+
+def test_triage_stores_difficulty_and_orders_jobs_without_a_wave_by_tier(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LLM_PROVIDER", "offline")
+    no_wave = {k: v for k, v in J01.items()}                     # easy, no wave given
+    hard = {**SAS, "wave": None}
+    out = _triage(tmp_path, monkeypatch, [no_wave, hard, {**J13, "wave": 7}])
+    assert out["J01"]["wave"] == 1 and out["J10"]["wave"] == 3 and out["J13"]["wave"] == 7
+    assert registry.get_job("J10")["lineage"]["difficulty"]["tier"] == "hard"
+    assert registry.get_job("J10")["complexity"] == out["J10"]["lineage"]["difficulty"]["score"]

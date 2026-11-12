@@ -18,7 +18,7 @@ data → triage → [translate → break → run both → reconcile → fix] ×3
 
 | Stage | What happens | Tech |
 |---|---|---|
-| Triage | Column-level lineage for any job (parser-exact for T-SQL queries and multi-step scripts, AI-estimated and catalog-checked for SAS and procedures), known legacy-vs-Spark gaps per job, duplicate/unused detection (proposals only, never deletes), complexity, waves; jobs it cannot migrate as one query go to a human up front; AI-written job purpose and an advisory risk second opinion (can only escalate) | sqlglot, networkx, LLM |
+| Triage | Column-level lineage for any job (parser-exact for T-SQL queries and multi-step scripts, AI-estimated and catalog-checked for SAS and procedures), difficulty tier with reasons and migration route for T-SQL and SAS (DATA steps, MERGE, RETAIN, FIRST./LAST., macros), known legacy-vs-Spark gaps per job, duplicate/unused detection (proposals only, never deletes), complexity, waves; jobs it cannot migrate as one query go to a human up front; AI-written job purpose and an advisory risk second opinion (can only escalate) | sqlglot, networkx, LLM |
 | Translate | Rule-based T-SQL → Spark SQL first; LLM only for what rules can't; learned rules applied | sqlglot, LLM |
 | Break | Adversarial edge-case data: case, trailing spaces, NULLs, dates, rounding | Python, LLM |
 | Reconcile | Row counts, column totals, field-level diffs | pandas |
