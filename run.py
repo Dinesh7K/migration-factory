@@ -1,7 +1,7 @@
 """MigrateGuard command line.
 
     python run.py data            build the insurance database
-    python run.py triage          register jobs, lineage, retire proposals
+    python run.py triage          register jobs; print difficulty, route, purpose, lineage, proposals
     python run.py migrate [WAVE]  run the agent loop on pending jobs (all waves if omitted)
     python run.py approve JOB     human sign-off (saves the fix as a rule)
     python run.py retire JOB      approve a retire proposal (archives, never deletes)
@@ -11,10 +11,11 @@
 """
 import sys
 
-from factory import registry
+from factory import config, registry
 from factory.agents.migrate import approve_job, migrate_wave
 from factory.archive.archive import restore_job
 from factory.data_gen.build_db import build_db, load_tables
+from factory.runners.spark import engine_label
 from factory.triage.triage import approve_retire, triage
 
 
@@ -33,14 +34,29 @@ def fixer_calls(wave: int) -> int:
     return sum(1 for a in registry.audit() if a["event"] == "fix" and a["job_id"] in ids)
 
 
+def print_triage(results: list[dict]) -> None:
+    """Print what triage found for each job: tier, route, decision, purpose, gaps, lineage method."""
+    for r in results:
+        flag = f"→ {r['status']}: {r['reason']}" if r["status"] != "pending" else f"→ migrate in wave {r['wave']}"
+        d = r["lineage"]["difficulty"]
+        print(f"  {r['job_id']} {d['tier']:<6} complexity={r['complexity']:<3} route={d['route']:<7} {flag}")
+        gaps = r["lineage"]["known_gaps"]
+        print(f"       purpose: {r['triage_ai']['summary']}" + (f"  [exposed to: {', '.join(gaps)}]" if gaps else ""))
+        if r["lineage"]["source"] not in ("parser", "none"):
+            print(f"       lineage: {r['lineage']['source']} · reads {', '.join(r['lineage']['reads']) or '?'}"
+                  + (f" · skipped {', '.join(r['lineage']['skipped'])}" if r["lineage"]["skipped"] else "")
+                  + (f" · unverified {', '.join(r['lineage']['unverified'])}" if r["lineage"]["unverified"] else ""))
+        if r["triage_ai"]["escalate"]:
+            print(f"       AI second opinion: looks regulatory — {r['triage_ai']['risk_reason']}")
+
+
 def demo() -> None:
     registry.reset()
+    print(f"\n[0] ENGINES — legacy: {config.LEGACY_MODE} · new: {engine_label()}")
     print("\n[1] DATA — same tables loaded into the legacy and new engines")
     tables = build_db()
     print("\n[2] TRIAGE — what NOT to migrate (proposals only, human decides)")
-    for r in triage(tables):
-        flag = f"→ {r['status']}: {r['reason']}" if r["status"] != "pending" else f"→ migrate in wave {r['wave']}"
-        print(f"  {r['job_id']} complexity={r['complexity']:<3} {flag}")
+    print_triage(triage(tables))
     for j in registry.list_jobs(status="proposed_retire"):
         approve_retire(j["job_id"], "reviewer")
         print(f"  reviewer approved retirement of {j['job_id']} → archived (restorable)")
@@ -79,7 +95,7 @@ def main(argv: list[str]) -> None:
     if cmd == "data":
         build_db()
     elif cmd == "triage":
-        triage(load_tables()); status()
+        print_triage(triage(load_tables())); status()
     elif cmd == "migrate":
         tables = load_tables()
         waves = [int(argv[2])] if len(argv) > 2 else sorted({j["wave"] for j in registry.list_jobs()})

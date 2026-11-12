@@ -18,7 +18,7 @@ data → triage → [translate → break → run both → reconcile → fix] ×3
 
 | Stage | What happens | Tech |
 |---|---|---|
-| Triage | Lineage map, duplicate/unused detection (proposals only, never deletes), complexity, regulatory risk, waves | sqlglot, networkx |
+| Triage | Column-level lineage for any job (parser-exact for T-SQL queries and multi-step scripts, AI-estimated and catalog-checked for SAS and procedures), difficulty tier with reasons and migration route for T-SQL and SAS (DATA steps, MERGE, RETAIN, FIRST./LAST., macros), known legacy-vs-Spark gaps per job, duplicate/unused detection (proposals only, never deletes), complexity, waves; jobs it cannot migrate as one query go to a human up front; AI-written job purpose and an advisory risk second opinion (can only escalate) | sqlglot, networkx, LLM |
 | Translate | Rule-based T-SQL → Spark SQL first; LLM only for what rules can't; learned rules applied | sqlglot, LLM |
 | Break | Adversarial edge-case data: case, trailing spaces, NULLs, dates, rounding | Python, LLM |
 | Reconcile | Row counts, column totals, field-level diffs | pandas |
@@ -35,8 +35,9 @@ vs £1,000 (new), the fixer applies `UPPER(RTRIM(...))`, the numbers match, a hu
 becomes a rule reused on every similar job.
 
 ## Quick start
+Needs Python 3.11+ and **Java 17 or 21** (for PySpark; check with `java -version`).
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt  # includes PySpark 4
 cp .env.example .env            # optional: LLM_PROVIDER=ollama for a free local model (runs offline without one)
 python run.py demo              # end-to-end demo in the terminal
 streamlit run app/app.py        # review screen + dashboard
@@ -45,9 +46,11 @@ pytest -q
 Local LLM (no API cost): install [Ollama](https://ollama.com), `ollama pull qwen2.5-coder`, set
 `LLM_PROVIDER=ollama` in `.env`. If the model is unreachable the fixer falls back to the offline pattern library.
 
-Optional real engines: `docker compose up -d` (SQL Server) with `LEGACY_MODE=sqlserver`, and Java 17/21 +
-`pip install "pyspark>=4,<5"` + `NEW_MODE=spark` for PySpark. Defaults use a SQL Server text-semantics emulator (SQLite with a custom collation)
-and DuckDB (Spark-like text semantics) so the demo runs anywhere.
+Engines: migrated jobs run on **local PySpark** by default (`NEW_MODE=spark`); the demo prints the engine it used
+on its first line. Without Java or PySpark the run falls back to DuckDB with a loud warning and an audit-log entry:
+a fallback run is not proof on Spark. `NEW_MODE=duckdb` is the fast development mode (Spark-like text semantics, no Java).
+The legacy side defaults to a SQL Server text-semantics emulator (SQLite with a custom collation); a real SQL Server
+runner exists (`docker compose up -d`, `LEGACY_MODE=sqlserver`) but has not been run against a live server.
 
 ## Repo structure
 ```

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_id TEXT PRIMARY KEY, lang TEXT, source_path TEXT, keys TEXT, output TEXT,
     risk TEXT, wave INTEGER, feeds_report TEXT, status TEXT, confidence REAL,
     method TEXT, target_code TEXT, attempts INTEGER DEFAULT 0, reason TEXT,
-    fix_pattern TEXT, complexity INTEGER, lineage TEXT, updated_at TEXT
+    fix_pattern TEXT, complexity INTEGER, lineage TEXT, updated_at TEXT, triage_ai TEXT
 );
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, job_id TEXT, actor TEXT,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS archive_index (
 );
 """
 
-JSON_FIELDS = {"keys", "lineage"}
+JSON_FIELDS = {"keys", "lineage", "triage_ai"}
 
 
 def _now() -> str:
@@ -46,6 +46,9 @@ def connect() -> sqlite3.Connection:
     con = sqlite3.connect(config.DB_PATH)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    # Databases created before the triage agent stored its AI review lack this column.
+    if "triage_ai" not in {r[1] for r in con.execute("PRAGMA table_info(jobs)")}:
+        con.execute("ALTER TABLE jobs ADD COLUMN triage_ai TEXT")
     return con
 
 

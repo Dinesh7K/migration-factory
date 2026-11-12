@@ -43,8 +43,8 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 | `factory/llm.py` | the ONLY LLM entry point (ollama / openai / azure / offline) | DONE for Ollama (openai/azure untested) | agent dev |
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
 | `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
-| `factory/runners/spark.py` | M2 run Spark SQL on PySpark / DuckDB fallback | DONE (DuckDB + PySpark) | data engineer |
-| `factory/triage/triage.py` | M3 lineage, duplicates (with reconcile proof), unused, risk, waves | PARTIAL (LLM label TODO) | agent dev |
+| `factory/runners/spark.py` | M2 run Spark SQL on PySpark (default) / DuckDB fallback | DONE + tested (`tests/test_spark.py`) | data engineer |
+| `factory/triage/triage.py` | M3 difficulty (easy/medium/hard + reasons + route) for T-SQL and SAS, column-level lineage, known gaps, unsupported-job guard, duplicates (with reconcile proof), unused, waves, advisory AI review | DONE + tested (`tests/test_triage.py`) | agent dev |
 | `factory/translate/translate.py` | M4 sqlglot → rules → LLM | PARTIAL (sqlglot + rules done) | agent dev |
 | `factory/breaker/breaker.py` | M5 adversarial rows | PARTIAL (deterministic done) | data/testing |
 | `factory/reconcile/reconcile.py` | M6 counts, totals, field diffs | DONE + tested | data engineer |
@@ -97,8 +97,11 @@ Rule (registry `rules` table):
     State this honestly in the README/deck as a dev emulator.
   - SAS jobs: legacy side = `legacy_jobs/expected/<job_id>.csv` (produced once in SAS OnDemand for Academics or from EXL samples).
 - **New side**
-  - `NEW_MODE=duckdb` (default) → DuckDB, which shares Spark's case- and space-sensitive text semantics. Fast, no Java.
-  - `NEW_MODE=spark` → local PySpark (needs Java 17). Use for the final demo.
+  - `NEW_MODE=spark` (default) → local PySpark 4 (needs Java 17 or 21). Use for the demo and every claim. If PySpark or
+    Java is missing, `runners/spark.py` falls back to DuckDB, prints a warning and logs `engine_fallback`; that run is
+    not proof on Spark. `python run.py demo` prints the engine used on its first line.
+  - `NEW_MODE=duckdb` → DuckDB, which shares Spark's case- and space-sensitive text semantics. Fast, no Java.
+    Development and test mode only (`tests/test_pipeline.py` uses it so tests run without Java).
 
 ## 7. Build order (remaining work, in priority order)
 
@@ -110,7 +113,7 @@ Rule (registry `rules` table):
 - [ ] Legacy jobs: 14 T-SQL done (J01–J09, J11–J15: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
 
 ### P1 — what wins
-- [x] `triage/triage.py`: duplicate proof + complexity score. - [ ] LLM business label (prompts/triage.md).
+- [x] `triage/triage.py`: duplicate proof + complexity score; column-level lineage and known gaps (parser, exact); multi-statement / DML / unparseable jobs → `needs_human` at triage; LLM job purpose + risk second opinion (prompts/triage.md), stored in `jobs.triage_ai`. The AI review is advisory: it never changes a status and can only escalate risk. Lineage method is recorded in `lineage["source"]`: `parser` (one query, or a multi-statement script traced through its temp tables), `parser_partial` (UPDATE/MERGE/procedure steps skipped and listed), `ai_estimated` (SAS, procedures, unparseable SQL: LLM estimate from prompts/lineage.md, checked against the catalog, unknown names in `unverified`), `none`.
 - [ ] `breaker/breaker.py`: add LLM-proposed edge cases (prompt `prompts/break.md`) on top of the deterministic ones.
 - [ ] `translate/translate.py`: LLM path for SAS + confidence scoring.
 - [x] `archive/archive.py`: snapshot + restore (basic).
@@ -145,5 +148,5 @@ streamlit run app/app.py
 - Python 3.11+, type hints, small pure functions, docstrings stating inputs/outputs.
 - Prompts live in `factory/prompts/*.md`, never inline in code.
 - Every module function that changes state writes an audit entry.
-- Keep the demo fast (< 30 s end to end; about 1 s offline, close to 30 s with the local Ollama model).
+- Keep the demo fast (on PySpark: about 7 s offline; about 75 s with the local Ollama model, of which about 35 s is one triage call per job; about 1 s offline on DuckDB).
 - Declare AI tools used in the README "AI tools used" section (hackathon rule).
