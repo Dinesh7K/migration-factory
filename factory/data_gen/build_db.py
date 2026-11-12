@@ -1,7 +1,8 @@
 """M1 — build the insurance database both engines run on.
 
 Base: freMTPL2 (real, public motor policies + claims) if data/raw/freMTPL2freq.csv and
-freMTPL2sev.csv exist; otherwise a fully synthetic motor book. Then Faker adds customers,
+freMTPL2sev.csv exist; else the older freMTPL release (data/raw/freMTPLfreq.csv and
+freMTPLsev.csv); otherwise a fully synthetic motor book. Then Faker adds customers,
 HOME/TRAVEL lines and payments. Output: data/generated/*.csv + lakehouse/bronze/*.parquet.
 
 By default the base data is CLEAN: the breaker agent injects the mess per job, which is the
@@ -30,10 +31,37 @@ def _rand_date(start: date, span_days: int) -> date:
     return start + timedelta(days=random.randint(0, span_days))
 
 
-def _motor_from_fremtpl2(max_policies: int) -> tuple[pd.DataFrame, pd.DataFrame] | None:
-    freq_p, sev_p = config.DATA_RAW / "freMTPL2freq.csv", config.DATA_RAW / "freMTPL2sev.csv"
+'''def _motor_from_fremtpl1(max_policies: int) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    """Older freMTPL release (freMTPLfreq.csv / freMTPLsev.csv, keyed on PolicyID).
+
+    It has no BonusMalus column, so annual_premium is synthetic here (seeded, same range as the
+    synthetic book). Region, policy IDs and claim amounts are real.
+    """
+    freq_p, sev_p = config.DATA_RAW / "freMTPLfreq.csv", config.DATA_RAW / "freMTPLsev.csv"
     if not (freq_p.exists() and sev_p.exists()):
         return None
+    freq = pd.read_csv(freq_p)
+    sev = pd.read_csv(sev_p)
+    freq = freq[freq["PolicyID"].isin(sev["PolicyID"])].head(max_policies)  # keep policies that have claims
+    policies = pd.DataFrame({
+        "policy_id": "P" + freq["PolicyID"].astype(int).astype(str),
+        "line_of_business": "MOTOR",
+        "region": freq["Region"].astype(str),
+        "annual_premium": [round(random.uniform(300, 2500), 2) for _ in range(len(freq))],
+    })
+    sev = sev[sev["PolicyID"].isin(freq["PolicyID"])]
+    claims = pd.DataFrame({
+        "policy_id": "P" + sev["PolicyID"].astype(int).astype(str),
+        "line_of_business": "MOTOR",
+        "claimed_amount": sev["ClaimAmount"].astype(float).round(2),
+    })
+    return policies, claims'''
+
+
+def _motor_from_fremtpl2(max_policies: int) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    freq_p, sev_p = config.DATA_RAW / "freMTPL2freq.csv", config.DATA_RAW / "freMTPL2sev.csv"
+    '''if not (freq_p.exists() and sev_p.exists()):
+        return _motor_from_fremtpl1(max_policies)'''
     freq = pd.read_csv(freq_p)
     sev = pd.read_csv(sev_p)
     freq = freq[freq["IDpol"].isin(sev["IDpol"])].head(max_policies)  # keep policies that have claims
@@ -76,7 +104,12 @@ def build_db(messy: bool = False, seed: int = 42, max_policies: int = 3000) -> d
     p = 0.08 if messy else 0.0
 
     real = _motor_from_fremtpl2(max_policies)
-    source = "freMTPL2" if real else "synthetic"
+    if not real:
+        source = "synthetic"
+    elif (config.DATA_RAW / "freMTPL2freq.csv").exists():
+        source = "freMTPL2"
+    else:
+        source = "freMTPL (v1)"
     pol_m, clm_m = real if real else _motor_synthetic(max_policies)
 
     # extra lines of business (synthetic)

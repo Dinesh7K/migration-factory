@@ -48,9 +48,12 @@ def llm_fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str,
 
 
 def fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str, str | None]:
-    out = llm_fix(job, code, result) if llm.available() else offline_fix(job, code, result)
-    registry.log(job["job_id"], "fixer", "fix", {"mode": "llm" if llm.available() else "offline",
-                                                  "reason": out[1], "pattern": out[2], "code": out[0]})
+    """Known patterns first (deterministic, free); the LLM only for gaps no pattern explains."""
+    out, mode = offline_fix(job, code, result), "pattern"
+    if out[0] is None and llm.available():
+        out, mode = llm_fix(job, code, result), "llm"
+    registry.log(job["job_id"], "fixer", "fix", {"mode": mode, "reason": out[1],
+                                                  "pattern": out[2], "code": out[0]})
     return out
 
 

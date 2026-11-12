@@ -4,6 +4,7 @@ Providers (LLM_PROVIDER in .env):
   offline  no LLM; callers fall back to deterministic logic (demo runs without a key)
   openai   OpenAI API (OPENAI_API_KEY, OPENAI_MODEL)
   azure    Azure OpenAI (AZURE_OPENAI_* vars)
+  ollama   local model via Ollama's OpenAI-compatible API (OLLAMA_MODEL, OLLAMA_BASE_URL)
 
 TODO (P0, agent dev): test openai/azure paths with a real key; add retries + timeout.
 """
@@ -19,7 +20,7 @@ class LLMUnavailable(RuntimeError):
 
 
 def available() -> bool:
-    return config.LLM_PROVIDER in {"openai", "azure"}
+    return config.LLM_PROVIDER in {"openai", "azure", "ollama"}
 
 
 def load_prompt(name: str, **values: str) -> str:
@@ -38,6 +39,11 @@ def complete(prompt: str, *, job_id: str | None, purpose: str, system: str | Non
         from openai import OpenAI
         client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         model = os.getenv("OPENAI_MODEL", "gpt-4o")
+    elif config.LLM_PROVIDER == "ollama":
+        from openai import OpenAI
+        client = OpenAI(base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+                        api_key="ollama")  # Ollama ignores the key, but the client needs one
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:3b")
     else:
         from openai import AzureOpenAI
         client = AzureOpenAI(api_key=os.environ["AZURE_OPENAI_API_KEY"],

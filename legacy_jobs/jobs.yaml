@@ -45,6 +45,30 @@ jobs:
     feeds_report: Finance - Home reserves
     risk: regulatory
     wave: 2
+  - job_id: J06
+    lang: tsql
+    source_path: legacy_jobs/tsql/J06_Outstanding_open_claims_by_region.sql
+    keys: [ region ]
+    output: outstanding_open_by_region
+    feeds_report: Finance - Reserving
+    risk: regulatory
+    wave: 3
+  - job_id: J07
+    lang: tsql
+    source_path: legacy_jobs/tsql/J07_Alpine_motor_claims.sql
+    keys: [ region ]
+    output: alpine_paid_by_region
+    feeds_report: Claims ops - Weather exposure
+    risk: internal
+    wave: 3
+  - job_id: J08
+    lang: tsql
+    source_path: legacy_jobs/tsql/J08_Claim_freq_per_100_policies.sql
+    keys: [ region ]
+    output: claim_freq_by_region
+    feeds_report: Actuarial - Claim frequency
+    risk: regulatory
+    wave: 3
   # SAS example: enable once legacy_jobs/expected/J10.csv exists
   # - job_id: J10
   #   lang: sas

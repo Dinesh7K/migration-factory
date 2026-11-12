@@ -18,12 +18,18 @@ from factory import config, registry
 
 
 def _string_filters(sql: str) -> list[tuple[str, str]]:
+    """Text filters to attack: `col = 'X'` and `col IN ('X', ...)` (uses the first value)."""
     tree = sqlglot.parse_one(sql, read="tsql")
     out = []
     for eq in tree.find_all(exp.EQ):
         l, r = eq.left, eq.right
         if isinstance(l, exp.Column) and isinstance(r, exp.Literal) and r.is_string:
             out.append((l.name, r.this))
+    for node in tree.find_all(exp.In):
+        vals = node.expressions
+        if isinstance(node.this, exp.Column) and vals and all(
+                isinstance(v, exp.Literal) and v.is_string for v in vals):
+            out.append((node.this.name, vals[0].this))
     return out
 
 
