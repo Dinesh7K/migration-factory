@@ -119,6 +119,22 @@ jobs:
     feeds_report: Pricing - Open claim frequency
     risk: internal
     wave: 4
+  - job_id: J16
+    lang: tsql
+    source_path: legacy_jobs/tsql/J16_outstanding_open_by_region.sql
+    keys: [region]
+    output: outstanding_open_by_region
+    feeds_report: Finance - Reserving
+    risk: regulatory
+    wave: 4
+  - job_id: J17
+    lang: tsql
+    source_path: legacy_jobs/tsql/J17_claim_freq_per_100_policies.sql
+    keys: [region]
+    output: claim_freq_per_100_by_region
+    feeds_report: Actuarial - Claim frequency
+    risk: regulatory
+    wave: 4
   # SAS example: enable once legacy_jobs/expected/J10.csv exists
   # - job_id: J10
   #   lang: sas

@@ -110,7 +110,7 @@ Rule (registry `rules` table):
 - [x] `agents/migrate.py`: `llm_fix()` when a provider is set (prompt in `factory/prompts/fix.md`), falling back to `offline_fix()`; returns plain-English reason. When the LLM picks a library pattern the rewrite comes from the library.
 - [x] `runners/spark.py`: `_run_pyspark()` (PySpark 4, Java 17/21).
 - [ ] `runners/legacy.py`: `_run_sqlserver()` is written (pandas `to_sql` via SQLAlchemy + pyodbc) but has never been run against a live server: test it.
-- [ ] Legacy jobs: 14 T-SQL done (J01–J09, J11–J15: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
+- [ ] Legacy jobs: 16 T-SQL done (J01–J09, J11–J17: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
 
 ### P1 — what wins
 - [x] `triage/triage.py`: duplicate proof + complexity score; column-level lineage and known gaps (parser, exact); multi-statement / DML / unparseable jobs → `needs_human` at triage; LLM job purpose + risk second opinion (prompts/triage.md), stored in `jobs.triage_ai`. The AI review is advisory: it never changes a status and can only escalate risk. Lineage method is recorded in `lineage["source"]`: `parser` (one query, or a multi-statement script traced through its temp tables), `parser_partial` (UPDATE/MERGE/procedure steps skipped and listed), `ai_estimated` (SAS, procedures, unparseable SQL: LLM estimate from prompts/lineage.md, checked against the catalog, unknown names in `unverified`), `none`.
@@ -129,7 +129,7 @@ Rule (registry `rules` table):
 J01 FAIL £500 on one policy → fixer applies `string_equality` → PASS → approved → rule R01;
 J04 PASS; J05 (wave 2) passes first try with `sqlglot+rules:R01`.
 Wave 3: J06 (`string_in_list`), J07 (`integer_division`), J08 (`like_case_insensitive`) each FAIL → fix → PASS →
-rules R02–R04; J09, J11, J12, J13 pass first try. Wave 4: J14 and J15 pass first try using the new rules.
+rules R02–R04; J09, J11, J12, J13 pass first try. Wave 4: J14, J15, J16 and J17 pass first try using the new rules.
 Fixer calls: wave 1 = 1, wave 2 = 0, wave 3 = 3, wave 4 = 0. Same result with `LLM_PROVIDER=ollama` and `offline`
 (`tests/test_pipeline.py::test_demo_story_end_to_end` checks the offline run).
 
