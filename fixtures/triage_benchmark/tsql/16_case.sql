@@ -1,0 +1,1 @@
+SELECT c.policy_id, p.region, SUM(CASE WHEN c.status = 'CLOSED' THEN COALESCE(c.paid_amount, 0) ELSE 0 END) AS closed_paid FROM claims AS c INNER JOIN policies AS p ON p.policy_id = c.policy_id WHERE c.claim_id >= 'CL000016' GROUP BY c.policy_id, p.region;

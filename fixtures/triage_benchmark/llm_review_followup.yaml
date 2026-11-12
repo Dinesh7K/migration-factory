@@ -1,0 +1,50 @@
+# Recheck AI lineage cases that previously named a DATA-step variable as a catalog field.
+jobs:
+  - job_id: BENCH_SAS_45
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/45_case.sas
+    keys: [policy_id]
+    output: out_sas_45
+    feeds_report: Benchmark SAS follow-up 45
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_46
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/46_case.sas
+    keys: [policy_id]
+    output: out_sas_46
+    feeds_report: Benchmark SAS follow-up 46
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_47
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/47_case.sas
+    keys: [policy_id]
+    output: out_sas_47
+    feeds_report: Benchmark SAS follow-up 47
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_48
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/48_case.sas
+    keys: [policy_id]
+    output: out_sas_48
+    feeds_report: Benchmark SAS follow-up 48
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_49
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/49_case.sas
+    keys: [policy_id]
+    output: out_sas_49
+    feeds_report: Benchmark SAS follow-up 49
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_50
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/50_case.sas
+    keys: [policy_id]
+    output: out_sas_50
+    feeds_report: Benchmark SAS follow-up 50
+    risk: internal
+    wave: 3

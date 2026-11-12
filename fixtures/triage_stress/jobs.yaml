@@ -1,0 +1,28 @@
+# Synthetic stress cases for triage. Run with:
+#   python run.py triage --manifest fixtures/triage_stress/jobs.yaml
+# These jobs are intentionally separate from legacy_jobs/jobs.yaml.
+jobs:
+  - job_id: STRESS_TSQL_COMPLEX
+    lang: tsql
+    source_path: fixtures/triage_stress/tsql/complex_cte_window.sql
+    keys: [policy_id]
+    output: stress_policy_claim_metrics
+    feeds_report: Triage stress test - complex query
+    risk: internal
+    wave: 1
+  - job_id: STRESS_TSQL_SCRIPT
+    lang: tsql
+    source_path: fixtures/triage_stress/tsql/multistep_update.sql
+    keys: [policy_id]
+    output: stress_policy_claim_adjusted
+    feeds_report: Triage stress test - multi-step script
+    risk: internal
+    wave: 1
+  - job_id: STRESS_SAS_ROW_MACRO
+    lang: sas
+    source_path: fixtures/triage_stress/sas/row_order_macro.sas
+    keys: [policy_id]
+    output: stress_sas_policy_claims
+    feeds_report: Triage stress test - SAS row logic
+    risk: internal
+    wave: 1

@@ -37,7 +37,6 @@ import json
 import logging
 import re
 
-import networkx as nx
 import sqlglot
 import yaml
 from sqlglot import exp
@@ -49,14 +48,17 @@ from factory import config, llm, registry
 from factory.patterns import rules
 from factory.reconcile.reconcile import reconcile
 from factory.runners.legacy import run_legacy
+from factory.triage import sas_parser
 
 # sqlglot logs a line for every statement it can only keep as raw text (procedures, control flow);
 # triage reports those itself ("skipped", "ai_estimated"), so keep the console clean.
 logging.getLogger("sqlglot").setLevel(logging.ERROR)
 
 
-def load_manifest() -> list[dict]:
-    return yaml.safe_load(config.JOBS_YAML.read_text())["jobs"]
+def load_manifest(path=None) -> list[dict]:
+    """Load jobs from the normal manifest or an explicitly selected fixture manifest."""
+    manifest_path = path or config.JOBS_YAML
+    return yaml.safe_load(manifest_path.read_text())["jobs"]
 
 
 def _source(job: dict) -> str:
@@ -107,7 +109,9 @@ def column_lineage(job: dict, schema: dict | None = None) -> tuple[dict[str, lis
             outputs[sel.alias_or_name] = sorted({
                 f"{n.source.name}.{n.name.split('.')[-1]}".replace('"', "")
                 for n in node.walk() if isinstance(n.source, exp.Table)})
-        real = {t.alias_or_name: t.name for t in tree.find_all(exp.Table)}
+        cte_names = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
+        real = {t.alias_or_name: t.name for t in tree.find_all(exp.Table)
+                if t.name.lower() not in cte_names}
         filters = sorted({f"{real[c.table]}.{c.name}"
                           for kind in (exp.Where, exp.Join, exp.Having) for part in tree.find_all(kind)
                           for c in part.find_all(exp.Column) if c.table in real})
@@ -208,7 +212,7 @@ def script_lineage(job: dict, schema: dict | None = None) -> dict:
             "unverified": []}
 
 
-def estimate_lineage(job: dict, schema: dict | None = None) -> dict:
+def estimate_lineage(job: dict, schema: dict | None = None, language_structure: dict | None = None) -> dict:
     """LLM-estimated lineage for a job no parser can read (SAS, procedures, unparseable SQL).
 
     The answer is checked against the catalog: every table and table.column the LLM names that
@@ -216,7 +220,8 @@ def estimate_lineage(job: dict, schema: dict | None = None) -> dict:
     estimate for a human to confirm, never proof. Raises llm.LLMUnavailable; returns source
     "none" if the answer is unusable."""
     catalog = "; ".join(f"{t}({', '.join(cols)})" for t, cols in (schema or {}).items()) or "unknown"
-    prompt = llm.load_prompt("lineage", lang=job["lang"], source=_source(job), catalog=catalog)
+    prompt = llm.load_prompt("lineage", lang=job["lang"], source=_source(job), catalog=catalog,
+                             language_structure=json.dumps(language_structure or {}))
     data = _json_object(llm.complete(prompt, job_id=job["job_id"], purpose="lineage"))
     if not data or not isinstance(data.get("reads"), list):
         return {**_EMPTY, "reads": job.get("reads", [])}
@@ -224,6 +229,8 @@ def estimate_lineage(job: dict, schema: dict | None = None) -> dict:
     raw = data.get("outputs") if isinstance(data.get("outputs"), dict) else {}
     outputs = {str(col): sorted({str(s) for s in srcs if isinstance(s, str)})
                for col, srcs in raw.items() if isinstance(srcs, list)}
+    if job["lang"] == "sas":
+        outputs = _expand_sas_output_refs(outputs)
     unverified = []
     if schema is not None:
         unverified += [r for r in reads if r not in schema]
@@ -244,12 +251,15 @@ def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dic
                                   → LLM estimate checked against the catalog ("ai_estimated")
     4. otherwise                  → empty                                  ("none")
     May raise llm.LLMUnavailable in case 3."""
+    language_structure = sas_parser.analyze(_source(job)) if job["lang"] == "sas" else None
     if job["lang"] == "tsql":
         statements = _statements(job)
         if len(statements) == 1 and isinstance(statements[0], exp.Query) and not statements[0].args.get("into"):
             t = statements[0]
             outputs, filters = column_lineage(job, schema)
-            return {"reads": sorted({tb.name for tb in t.find_all(exp.Table)}),
+            cte_names = {cte.alias_or_name.lower() for cte in t.find_all(exp.CTE)}
+            return {"reads": sorted({tb.name for tb in t.find_all(exp.Table)
+                                     if tb.name.lower() not in cte_names}),
                     "columns": sorted({c.name for c in t.find_all(exp.Column)}),
                     "column_lineage": outputs, "filters": filters, "known_gaps": known_gaps(job),
                     "source": "parser", "skipped": [], "unverified": []}
@@ -258,13 +268,15 @@ def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dic
             if traced["source"] != "none":
                 return traced
     if use_llm and llm.available():
-        return estimate_lineage(job, schema)
-    return {**_EMPTY, "reads": job.get("reads", [])}
+        estimated = estimate_lineage(job, schema, language_structure)
+        return {**estimated, **({"language_structure": language_structure} if language_structure else {})}
+    return {**_EMPTY, "reads": job.get("reads", []),
+            **({"language_structure": language_structure} if language_structure else {})}
 
 
 # SAS constructs that drive migration effort: (label shown to the reviewer, pattern, weight).
 _SAS_FEATURES = [
-    ("DATA step", r"(?:^|;)\s*data\s+[\w.]+", 10),
+       ("DATA step", r"(?:^|;)\s*data\s+&?[\w.]+", 10),  # also `data &out;` inside a macro
     ("PROC SQL", r"\bproc\s+sql\b", 5),
     ("PROC SORT", r"\bproc\s+sort\b", 5),
     ("summary procedure (MEANS/SUMMARY/FREQ)", r"\bproc\s+(means|summary|freq|tabulate|univariate)\b", 10),
@@ -350,8 +362,61 @@ def difficulty(job: dict) -> dict:
     return {"tier": tier, "score": score, "reasons": reasons, "route": route}
 
 
+def needs_deep_review(job: dict, lin: dict, diff: dict) -> bool:
+    if diff["score"] >= 60:
+        return True
+    if job["lang"] != "sas":
+        return False
+    structure = lin.get("language_structure") or {}
+    constructs = structure.get("constructs") or {}
+    return bool(structure.get("parse_errors") or structure.get("generic_statements")
+                or constructs.get("macro_definition") or constructs.get("macro_call_statement")
+                or constructs.get("macro_call") or constructs.get("macro_variable_ref")
+                or constructs.get("include_statement"))
+
+
+def preflight_reason(job: dict, lin: dict, diff: dict, note: dict | None = None,
+                     deep_review: bool = False) -> str | None:
+    """Why a job needs a person before it can enter an automatic migration wave."""
+    if lin["source"] == "parser_partial" or lin.get("skipped"):
+        return "Lineage is partial because triage skipped one or more steps"
+    if lin["source"] == "none":
+        return "Triage could not establish lineage; confirm the job's inputs and purpose"
+    if lin.get("unverified"):
+        return "Lineage contains names not found in the catalog: " + ", ".join(lin["unverified"])
+    if job["lang"] != "tsql" and lin["source"] != "ai_estimated":
+        return "No usable AI lineage estimate; confirm this job's inputs and purpose"
+    if job["lang"] == "sas" and not (lin.get("language_structure") or {}).get("available"):
+        return "SAS syntax parser is unavailable; confirm the job structure before migration"
+    if deep_review:
+        if not note or note.get("source") != "llm":
+            return "Complex or uncertain logic requires the configured LLM for review"
+        if note.get("understood") is not True or note.get("uncertainties"):
+            why = "; ".join(note.get("uncertainties") or [])
+            return (f"Complex or uncertain logic; AI could not confirm the full logic"
+                    + (f": {why}" if why else ""))
+        ai_reads = {str(name).casefold() for name in note.get("reads") or []}
+        known_reads = {str(name).casefold() for name in lin.get("reads") or []}
+        if not ai_reads or ai_reads != known_reads:
+            return "AI and lineage source tables do not agree"
+    return None
+
+
+def _sort_and_conditions(tree: exp.Expression) -> None:
+    """Put every top-level AND chain (WHERE, HAVING, JOIN ON) in a fixed order, in place,
+    so `a AND b` and `b AND a` give the same fingerprint. OR branches are left as written."""
+    for node in list(tree.find_all(exp.Where, exp.Having, exp.Join)):
+        key = "on" if isinstance(node, exp.Join) else "this"
+        cond = node.args.get(key)
+        if isinstance(cond, exp.And):
+            parts = sorted(cond.flatten(), key=lambda e: e.sql(dialect="spark", normalize=True))
+            node.set(key, exp.and_(*parts, copy=False))
+
+
 def fingerprint(job: dict) -> str | None:
-    """Logic fingerprint ignoring aliases/formatting: sqlglot-normalised SQL with table aliases removed."""
+    """Logic fingerprint ignoring aliases, formatting and the order of AND conditions:
+    sqlglot-normalised SQL with table aliases removed. Equal fingerprints only make two jobs
+    duplicate CANDIDATES; triage still proves it by reconciling their outputs."""
     if job["lang"] != "tsql":
         return None
     t = _tree(job)
@@ -362,6 +427,7 @@ def fingerprint(job: dict) -> str | None:
     for al in list(t.find_all(exp.Alias)):  # `x AS x` → `x`
         if isinstance(al.this, exp.Column) and al.this.name.lower() == al.alias.lower():
             al.replace(al.this)
+    _sort_and_conditions(t)
     return t.sql(dialect="spark", normalize=True, comments=False)
 
 
@@ -384,7 +450,25 @@ def _json_object(answer: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def ai_review(job: dict, lin: dict, use_llm: bool = True) -> dict:
+def _expand_sas_output_refs(outputs: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Resolve AI-reported references between derived SAS columns to their source columns."""
+    names = {name.casefold(): name for name in outputs}
+
+    def expand(ref: str, path: frozenset[str]) -> list[str]:
+        key = names.get(ref.casefold()) if "." not in ref else None
+        if key is None or key.casefold() in path:
+            return [ref]
+        sources = outputs[key]
+        if not sources:
+            return [ref]
+        return [source for item in sources for source in expand(item, path | {key.casefold()})]
+
+    return {column: sorted({source for ref in refs for source in expand(ref, frozenset({column.casefold()}))})
+            for column, refs in outputs.items()}
+
+
+def ai_review(job: dict, lin: dict, use_llm: bool = True, *, diff: dict | None = None,
+              deep_review: bool = False, schema: dict | None = None) -> dict:
     """The triage agent's advisory note on one job.
 
     Returns {"summary", "risk" ("regulatory" | "internal" | None), "risk_reason", "source",
@@ -394,21 +478,47 @@ def ai_review(job: dict, lin: dict, use_llm: bool = True) -> dict:
             "escalate": False}
     if not (use_llm and llm.available()):
         return note
+    relevant = lin.get("reads") or list((schema or {}).keys())[:40]
+    catalog = "; ".join(f"{table}({', '.join((schema or {}).get(table, {}))})" for table in relevant)
+    sas_context = ("SAS semantic checks: a DATA-step MERGE uses BY-group matching, not a SQL join; "
+                   "BY logic depends on input order; FIRST./LAST. mark group boundaries; RETAIN and "
+                   "sum statements carry row state; SAS missing values and macro/include expansion "
+                   "need explicit review. Do not claim these are clear if source or generated code is missing."
+                   if job["lang"] == "sas" else
+                   "T-SQL runs with SQL Server semantics; check the listed compatibility gaps against Spark.")
     prompt = llm.load_prompt("triage", lang=job["lang"], source=_source(job),
                              reads=", ".join(lin.get("reads") or []) or "unknown",
                              column_lineage=json.dumps(lin.get("column_lineage") or {}) or "unknown",
-                             feeds_report=job.get("feeds_report") or "none known")
+                             lineage_source=lin.get("source", "none"),
+                             feeds_report=job.get("feeds_report") or "none known",
+                             difficulty=(f"{diff['tier']} ({diff['score']}/100); route {diff['route']}"
+                                         if diff else "not scored"),
+                             known_gaps=", ".join(lin.get("known_gaps") or []) or "none detected",
+                             language_structure=json.dumps(lin.get("language_structure") or {}),
+                             catalog=catalog or "not available",
+                             project_context=(f"Job {job['job_id']} writes {job.get('output') or 'an unspecified output'}, "
+                                              f"declared risk {job.get('risk')}, target Spark. {sas_context}"))
     data = _json_object(llm.complete(prompt, job_id=job["job_id"], purpose="triage"))  # may raise LLMUnavailable
     if not data or not str(data.get("summary") or "").strip():
         return note
     risk = data.get("risk") if data.get("risk") in {"regulatory", "internal"} else None
-    return {"summary": str(data["summary"]).strip()[:300], "risk": risk,
+    note = {"summary": str(data["summary"]).strip()[:300], "risk": risk,
             "risk_reason": str(data.get("risk_reason") or "").strip()[:300], "source": "llm",
             "escalate": risk == "regulatory" and job.get("risk") != "regulatory"}
+    if deep_review:
+        reads = data.get("reads") if isinstance(data.get("reads"), list) else []
+        uncertainties = data.get("uncertainties") if isinstance(data.get("uncertainties"), list) else [
+            "AI did not return an uncertainty assessment"]
+        note.update({"understood": data.get("understood") is True,
+                     "uncertainties": [str(item)[:200] for item in uncertainties[:8]],
+                     "reads": sorted({str(item) for item in reads if isinstance(item, str)})})
+        if not isinstance(data.get("reads"), list):
+            note["uncertainties"].append("AI did not return its source tables")
+    return note
 
 
-def triage(tables, actor: str = "triage_agent") -> list[dict]:
-    manifest = load_manifest()
+def triage(tables, actor: str = "triage_agent", manifest_path=None) -> list[dict]:
+    manifest = load_manifest() if manifest_path is None else load_manifest(manifest_path)
     schema = _schema(tables)
     blocked = {j["job_id"]: unsupported(j) for j in manifest}
     outputs_read = set()
@@ -422,16 +532,19 @@ def triage(tables, actor: str = "triage_agent") -> list[dict]:
             use_llm, lin[j["job_id"]] = False, lineage(j, schema, use_llm=False)
         outputs_read.update(lin[j["job_id"]]["reads"])
 
-    g = nx.DiGraph()
     seen: dict[str, dict] = {}
     results = []
     for j in manifest:
         jid = j["job_id"]
-        for t in lin[jid]["reads"]:
-            g.add_edge(t, jid)
-        g.add_edge(jid, j["output"])
-        if j.get("feeds_report"):
-            g.add_edge(j["output"], j["feeds_report"])
+        diff = difficulty(j)
+        deep_review = needs_deep_review(j, lin[jid], diff)
+        try:
+            note = ai_review(j, lin[jid], use_llm, diff=diff,
+                             deep_review=deep_review, schema=schema)
+        except llm.LLMUnavailable as e:  # stop asking for the rest of this run; plain summaries instead
+            print(f"  triage: LLM unavailable ({e}); using plain summaries")
+            use_llm, note = False, ai_review(j, lin[jid], use_llm=False, diff=diff,
+                                             deep_review=deep_review, schema=schema)
 
         status, reason, extra = "pending", "", {}
         fp = None if blocked[jid] else fingerprint(j)
@@ -439,25 +552,29 @@ def triage(tables, actor: str = "triage_agent") -> list[dict]:
             # Not a retire proposal and not migratable: a person must look at it.
             status, reason = "needs_human", blocked[jid]
             extra = {"confidence": 0.0, "method": "not attempted", "attempts": 0}
-        elif fp and fp in seen and j["risk"] != "regulatory":
+        else:
+            gate = preflight_reason(j, lin[jid], diff, note, deep_review)
+            if gate:
+                status, reason = "needs_human", gate
+                extra = {"confidence": 0.0, "method": "not attempted", "attempts": 0}
+
+        if status == "pending" and fp and fp in seen and j["risk"] != "regulatory":
             other = seen[fp]
             proof = reconcile(run_legacy(other, tables), run_legacy(j, tables), j["keys"])
             if proof.passed:
                 status, reason = "proposed_retire", f"Duplicate of {other['job_id']} (outputs reconcile: {proof.summary()})"
-        elif not j.get("feeds_report") and j["output"] not in outputs_read and j["risk"] != "regulatory":
-            status, reason = "proposed_retire", "Unused: output feeds no report and no other job reads it"
+        elif (status == "pending" and not j.get("feeds_report") and j["output"] not in outputs_read
+              and j["risk"] != "regulatory"):
+            if lin[jid]["source"] in {"parser", "ai_estimated"} and not lin[jid].get("unverified"):
+                status, reason = "proposed_retire", "Unused: output feeds no report and no other job reads it"
+            else:
+                status, reason = "needs_human", "Cannot assess whether this job is used because lineage is incomplete"
         if fp and fp not in seen:
             seen[fp] = j
 
-        try:
-            note = ai_review(j, lin[jid], use_llm)
-        except llm.LLMUnavailable as e:  # stop asking for the rest of this run; plain summaries instead
-            print(f"  triage: LLM unavailable ({e}); using plain summaries")
-            use_llm, note = False, ai_review(j, lin[jid], use_llm=False)
         if note["escalate"] and status == "proposed_retire":
             reason += f" AI second opinion: this looks regulatory ({note['risk_reason']}) — check before approving."
 
-        diff = difficulty(j)
         lin[jid]["difficulty"] = diff
         record = {**{k: j.get(k) for k in ("job_id", "lang", "source_path", "keys", "output", "risk",
                                             "wave", "feeds_report")},

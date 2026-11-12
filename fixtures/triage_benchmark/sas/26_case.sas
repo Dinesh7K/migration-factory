@@ -1,0 +1,12 @@
+proc sort data=claims out=sorted_26;
+by policy_id claim_date;
+run;
+data sasb_26;
+set sorted_26;
+by policy_id;
+retain running_paid 0;
+if first.policy_id then running_paid=0;
+running_paid+coalesce(paid_amount,0);
+if last.policy_id;
+keep policy_id running_paid;
+run;

@@ -251,3 +251,18 @@ def test_triage_stores_difficulty_and_orders_jobs_without_a_wave_by_tier(tmp_pat
     assert out["J01"]["wave"] == 1 and out["J10"]["wave"] == 3 and out["J13"]["wave"] == 7
     assert registry.get_job("J10")["lineage"]["difficulty"]["tier"] == "hard"
     assert registry.get_job("J10")["complexity"] == out["J10"]["lineage"]["difficulty"]["score"]
+
+
+def test_duplicate_fingerprint_ignores_the_order_of_and_conditions(tmp_path):
+    a = T.fingerprint(_job(tmp_path, "SELECT policy_id, SUM(paid_amount) AS total_paid FROM claims "
+                                     "WHERE line_of_business = 'MOTOR' AND paid_amount > 0 GROUP BY policy_id"))
+    b = T.fingerprint(_job(tmp_path, "select c.policy_id, sum(c.paid_amount) total_paid from claims c "
+                                     "where c.paid_amount > 0 and c.line_of_business = 'MOTOR' group by c.policy_id"))
+    other = T.fingerprint(_job(tmp_path, "SELECT policy_id, SUM(paid_amount) AS total_paid FROM claims "
+                                         "WHERE line_of_business = 'HOME' AND paid_amount > 0 GROUP BY policy_id"))
+    assert a == b and a != other
+
+
+def test_sas_data_step_named_by_a_macro_variable_is_found(tmp_path):
+    reasons = T.difficulty(_sas(tmp_path, "%macro m(out=o); data &out; set claims; run; %mend;"))["reasons"]
+    assert any("DATA step" in r for r in reasons)
