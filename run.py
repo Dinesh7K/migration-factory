@@ -11,10 +11,11 @@
 """
 import sys
 
-from factory import registry
+from factory import config, registry
 from factory.agents.migrate import approve_job, migrate_wave
 from factory.archive.archive import restore_job
 from factory.data_gen.build_db import build_db, load_tables
+from factory.runners.spark import engine_label
 from factory.triage.triage import approve_retire, triage
 
 
@@ -35,6 +36,7 @@ def fixer_calls(wave: int) -> int:
 
 def demo() -> None:
     registry.reset()
+    print(f"\n[0] ENGINES — legacy: {config.LEGACY_MODE} · new: {engine_label()}")
     print("\n[1] DATA — same tables loaded into the legacy and new engines")
     tables = build_db()
     print("\n[2] TRIAGE — what NOT to migrate (proposals only, human decides)")

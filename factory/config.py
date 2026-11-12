@@ -18,7 +18,7 @@ PROMPTS = ROOT / "factory" / "prompts"
 DB_PATH = Path(os.getenv("FACTORY_DB", ROOT / "factory.db"))
 
 LEGACY_MODE = os.getenv("LEGACY_MODE", "emulator")   # emulator | sqlserver
-NEW_MODE = os.getenv("NEW_MODE", "duckdb")           # duckdb | spark
+NEW_MODE = os.getenv("NEW_MODE", "spark")            # spark (falls back to duckdb, loudly) | duckdb
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "offline")  # offline | openai | azure | ollama
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120"))  # seconds per call; local models are slow on first load
 

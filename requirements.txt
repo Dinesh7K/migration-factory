@@ -10,6 +10,7 @@ python-dotenv>=1.0
 pytest>=8
 # LLM client (also used for the local Ollama endpoint)
 openai>=1.30
-# Optional real engines
-# pyspark>=4,<5           # needs Java 17 or 21; NEW_MODE=spark
+# New-side engine (default NEW_MODE=spark). Needs Java 17 or 21 on the machine.
+pyspark>=4,<5
+# Optional real legacy engine
 # pyodbc>=5 sqlalchemy>=2 # SQL Server; LEGACY_MODE=sqlserver
