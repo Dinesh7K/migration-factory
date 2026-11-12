@@ -2,6 +2,8 @@
 
     python run.py data            build the insurance database
     python run.py triage          register jobs; print difficulty, route, purpose, lineage, proposals
+    python run.py triage --manifest fixtures/triage_stress/jobs.yaml
+                                 run triage against an alternate manifest
     python run.py migrate [WAVE]  run the agent loop on pending jobs (all waves if omitted)
     python run.py approve JOB     human sign-off (saves the fix as a rule)
     python run.py retire JOB      approve a retire proposal (archives, never deletes)
@@ -95,7 +97,12 @@ def main(argv: list[str]) -> None:
     if cmd == "data":
         build_db()
     elif cmd == "triage":
-        print_triage(triage(load_tables())); status()
+        manifest_path = None
+        if len(argv) > 2:
+            if len(argv) != 4 or argv[2] != "--manifest":
+                raise SystemExit("Usage: python run.py triage [--manifest PATH]")
+            manifest_path = config.ROOT / argv[3]
+        print_triage(triage(load_tables(), manifest_path=manifest_path)); status()
     elif cmd == "migrate":
         tables = load_tables()
         waves = [int(argv[2])] if len(argv) > 2 else sorted({j["wave"] for j in registry.list_jobs()})

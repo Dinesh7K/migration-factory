@@ -1,0 +1,802 @@
+# Generated synthetic benchmark jobs for triage; not production migrations.
+jobs:
+  - job_id: BENCH_TSQL_01
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/01_case.sql
+    keys: [policy_id]
+    output: "out_tsql_01"
+    feeds_report: "Benchmark T-SQL case 01"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_02
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/02_case.sql
+    keys: [policy_id]
+    output: "out_tsql_02"
+    feeds_report: "Benchmark T-SQL case 02"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_03
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/03_case.sql
+    keys: [policy_id]
+    output: "out_tsql_03"
+    feeds_report: "Benchmark T-SQL case 03"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_04
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/04_case.sql
+    keys: [policy_id]
+    output: "out_tsql_04"
+    feeds_report: "Benchmark T-SQL case 04"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_05
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/05_case.sql
+    keys: [policy_id]
+    output: "out_tsql_05"
+    feeds_report: "Benchmark T-SQL case 05"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_06
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/06_case.sql
+    keys: [policy_id]
+    output: "out_tsql_06"
+    feeds_report: "Benchmark T-SQL case 06"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_07
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/07_case.sql
+    keys: [policy_id]
+    output: "out_tsql_07"
+    feeds_report: "Benchmark T-SQL case 07"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_08
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/08_case.sql
+    keys: [policy_id]
+    output: "out_tsql_08"
+    feeds_report: "Benchmark T-SQL case 08"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_09
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/09_case.sql
+    keys: [policy_id]
+    output: "out_tsql_09"
+    feeds_report: "Benchmark T-SQL case 09"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_10
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/10_case.sql
+    keys: [policy_id]
+    output: "out_tsql_10"
+    feeds_report: "Benchmark T-SQL case 10"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_TSQL_11
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/11_case.sql
+    keys: [policy_id]
+    output: "out_tsql_11"
+    feeds_report: "Benchmark T-SQL case 11"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_12
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/12_case.sql
+    keys: [policy_id]
+    output: "out_tsql_12"
+    feeds_report: "Benchmark T-SQL case 12"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_13
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/13_case.sql
+    keys: [policy_id]
+    output: "out_tsql_13"
+    feeds_report: "Benchmark T-SQL case 13"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_14
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/14_case.sql
+    keys: [policy_id]
+    output: "out_tsql_14"
+    feeds_report: "Benchmark T-SQL case 14"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_15
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/15_case.sql
+    keys: [policy_id]
+    output: "out_tsql_15"
+    feeds_report: "Benchmark T-SQL case 15"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_16
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/16_case.sql
+    keys: [policy_id]
+    output: "out_tsql_16"
+    feeds_report: "Benchmark T-SQL case 16"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_17
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/17_case.sql
+    keys: [policy_id]
+    output: "out_tsql_17"
+    feeds_report: "Benchmark T-SQL case 17"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_18
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/18_case.sql
+    keys: [policy_id]
+    output: "out_tsql_18"
+    feeds_report: "Benchmark T-SQL case 18"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_19
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/19_case.sql
+    keys: [policy_id]
+    output: "out_tsql_19"
+    feeds_report: "Benchmark T-SQL case 19"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_20
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/20_case.sql
+    keys: [policy_id]
+    output: "out_tsql_20"
+    feeds_report: "Benchmark T-SQL case 20"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_21
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/21_case.sql
+    keys: [policy_id]
+    output: "out_tsql_21"
+    feeds_report: "Benchmark T-SQL case 21"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_22
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/22_case.sql
+    keys: [policy_id]
+    output: "out_tsql_22"
+    feeds_report: "Benchmark T-SQL case 22"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_23
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/23_case.sql
+    keys: [policy_id]
+    output: "out_tsql_23"
+    feeds_report: "Benchmark T-SQL case 23"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_24
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/24_case.sql
+    keys: [policy_id]
+    output: "out_tsql_24"
+    feeds_report: "Benchmark T-SQL case 24"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_TSQL_25
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/25_case.sql
+    keys: [policy_id]
+    output: "out_tsql_25"
+    feeds_report: "Benchmark T-SQL case 25"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_26
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/26_case.sql
+    keys: [policy_id]
+    output: "out_tsql_26"
+    feeds_report: "Benchmark T-SQL case 26"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_27
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/27_case.sql
+    keys: [policy_id]
+    output: "out_tsql_27"
+    feeds_report: "Benchmark T-SQL case 27"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_28
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/28_case.sql
+    keys: [policy_id]
+    output: "out_tsql_28"
+    feeds_report: "Benchmark T-SQL case 28"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_29
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/29_case.sql
+    keys: [policy_id]
+    output: "out_tsql_29"
+    feeds_report: "Benchmark T-SQL case 29"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_30
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/30_case.sql
+    keys: [policy_id]
+    output: "out_tsql_30"
+    feeds_report: "Benchmark T-SQL case 30"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_31
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/31_case.sql
+    keys: [policy_id]
+    output: "out_tsql_31"
+    feeds_report: "Benchmark T-SQL case 31"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_32
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/32_case.sql
+    keys: [policy_id]
+    output: "out_tsql_32"
+    feeds_report: "Benchmark T-SQL case 32"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_33
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/33_case.sql
+    keys: [policy_id]
+    output: "out_tsql_33"
+    feeds_report: "Benchmark T-SQL case 33"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_34
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/34_case.sql
+    keys: [policy_id]
+    output: "out_tsql_34"
+    feeds_report: "Benchmark T-SQL case 34"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_35
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/35_case.sql
+    keys: [policy_id]
+    output: "out_tsql_35"
+    feeds_report: "Benchmark T-SQL case 35"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_36
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/36_case.sql
+    keys: [policy_id]
+    output: "out_tsql_36"
+    feeds_report: "Benchmark T-SQL case 36"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_37
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/37_case.sql
+    keys: [policy_id]
+    output: "out_tsql_37"
+    feeds_report: "Benchmark T-SQL case 37"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_38
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/38_case.sql
+    keys: [policy_id]
+    output: "out_tsql_38"
+    feeds_report: "Benchmark T-SQL case 38"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_39
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/39_case.sql
+    keys: [policy_id]
+    output: "out_tsql_39"
+    feeds_report: "Benchmark T-SQL case 39"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_40
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/40_case.sql
+    keys: [policy_id]
+    output: "out_tsql_40"
+    feeds_report: "Benchmark T-SQL case 40"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_41
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/41_case.sql
+    keys: [policy_id]
+    output: "out_tsql_41"
+    feeds_report: "Benchmark T-SQL case 41"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_42
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/42_case.sql
+    keys: [policy_id]
+    output: "out_tsql_42"
+    feeds_report: "Benchmark T-SQL case 42"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_43
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/43_case.sql
+    keys: [policy_id]
+    output: "out_tsql_43"
+    feeds_report: "Benchmark T-SQL case 43"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_44
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/44_case.sql
+    keys: [policy_id]
+    output: "out_tsql_44"
+    feeds_report: "Benchmark T-SQL case 44"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_45
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/45_case.sql
+    keys: [policy_id]
+    output: "out_tsql_45"
+    feeds_report: "Benchmark T-SQL case 45"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_46
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/46_case.sql
+    keys: [policy_id]
+    output: "out_tsql_46"
+    feeds_report: "Benchmark T-SQL case 46"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_47
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/47_case.sql
+    keys: [policy_id]
+    output: "out_tsql_47"
+    feeds_report: "Benchmark T-SQL case 47"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_48
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/48_case.sql
+    keys: [policy_id]
+    output: "out_tsql_48"
+    feeds_report: "Benchmark T-SQL case 48"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_49
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/49_case.sql
+    keys: [policy_id]
+    output: "out_tsql_49"
+    feeds_report: "Benchmark T-SQL case 49"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_TSQL_50
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/50_case.sql
+    keys: [policy_id]
+    output: "out_tsql_50"
+    feeds_report: "Benchmark T-SQL case 50"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_01
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/01_case.sas
+    keys: [policy_id]
+    output: "out_sas_01"
+    feeds_report: "Benchmark SAS case 01"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_02
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/02_case.sas
+    keys: [policy_id]
+    output: "out_sas_02"
+    feeds_report: "Benchmark SAS case 02"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_03
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/03_case.sas
+    keys: [policy_id]
+    output: "out_sas_03"
+    feeds_report: "Benchmark SAS case 03"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_04
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/04_case.sas
+    keys: [policy_id]
+    output: "out_sas_04"
+    feeds_report: "Benchmark SAS case 04"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_05
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/05_case.sas
+    keys: [policy_id]
+    output: "out_sas_05"
+    feeds_report: "Benchmark SAS case 05"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_06
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/06_case.sas
+    keys: [policy_id]
+    output: "out_sas_06"
+    feeds_report: "Benchmark SAS case 06"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_07
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/07_case.sas
+    keys: [policy_id]
+    output: "out_sas_07"
+    feeds_report: "Benchmark SAS case 07"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_08
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/08_case.sas
+    keys: [policy_id]
+    output: "out_sas_08"
+    feeds_report: "Benchmark SAS case 08"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_09
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/09_case.sas
+    keys: [policy_id]
+    output: "out_sas_09"
+    feeds_report: "Benchmark SAS case 09"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_10
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/10_case.sas
+    keys: [policy_id]
+    output: "out_sas_10"
+    feeds_report: "Benchmark SAS case 10"
+    risk: "internal"
+    wave: 1
+  - job_id: BENCH_SAS_11
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/11_case.sas
+    keys: [policy_id]
+    output: "out_sas_11"
+    feeds_report: "Benchmark SAS case 11"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_12
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/12_case.sas
+    keys: [policy_id]
+    output: "out_sas_12"
+    feeds_report: "Benchmark SAS case 12"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_13
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/13_case.sas
+    keys: [policy_id]
+    output: "out_sas_13"
+    feeds_report: "Benchmark SAS case 13"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_14
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/14_case.sas
+    keys: [policy_id]
+    output: "out_sas_14"
+    feeds_report: "Benchmark SAS case 14"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_15
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/15_case.sas
+    keys: [policy_id]
+    output: "out_sas_15"
+    feeds_report: "Benchmark SAS case 15"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_16
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/16_case.sas
+    keys: [policy_id]
+    output: "out_sas_16"
+    feeds_report: "Benchmark SAS case 16"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_17
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/17_case.sas
+    keys: [policy_id]
+    output: "out_sas_17"
+    feeds_report: "Benchmark SAS case 17"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_18
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/18_case.sas
+    keys: [policy_id]
+    output: "out_sas_18"
+    feeds_report: "Benchmark SAS case 18"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_19
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/19_case.sas
+    keys: [policy_id]
+    output: "out_sas_19"
+    feeds_report: "Benchmark SAS case 19"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_20
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/20_case.sas
+    keys: [policy_id]
+    output: "out_sas_20"
+    feeds_report: "Benchmark SAS case 20"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_21
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/21_case.sas
+    keys: [policy_id]
+    output: "out_sas_21"
+    feeds_report: "Benchmark SAS case 21"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_22
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/22_case.sas
+    keys: [policy_id]
+    output: "out_sas_22"
+    feeds_report: "Benchmark SAS case 22"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_23
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/23_case.sas
+    keys: [policy_id]
+    output: "out_sas_23"
+    feeds_report: "Benchmark SAS case 23"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_24
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/24_case.sas
+    keys: [policy_id]
+    output: "out_sas_24"
+    feeds_report: "Benchmark SAS case 24"
+    risk: "internal"
+    wave: 2
+  - job_id: BENCH_SAS_25
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/25_case.sas
+    keys: [policy_id]
+    output: "out_sas_25"
+    feeds_report: "Benchmark SAS case 25"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_26
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/26_case.sas
+    keys: [policy_id]
+    output: "out_sas_26"
+    feeds_report: "Benchmark SAS case 26"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_27
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/27_case.sas
+    keys: [policy_id]
+    output: "out_sas_27"
+    feeds_report: "Benchmark SAS case 27"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_28
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/28_case.sas
+    keys: [policy_id]
+    output: "out_sas_28"
+    feeds_report: "Benchmark SAS case 28"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_29
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/29_case.sas
+    keys: [policy_id]
+    output: "out_sas_29"
+    feeds_report: "Benchmark SAS case 29"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_30
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/30_case.sas
+    keys: [policy_id]
+    output: "out_sas_30"
+    feeds_report: "Benchmark SAS case 30"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_31
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/31_case.sas
+    keys: [policy_id]
+    output: "out_sas_31"
+    feeds_report: "Benchmark SAS case 31"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_32
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/32_case.sas
+    keys: [policy_id]
+    output: "out_sas_32"
+    feeds_report: "Benchmark SAS case 32"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_33
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/33_case.sas
+    keys: [policy_id]
+    output: "out_sas_33"
+    feeds_report: "Benchmark SAS case 33"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_34
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/34_case.sas
+    keys: [policy_id]
+    output: "out_sas_34"
+    feeds_report: "Benchmark SAS case 34"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_35
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/35_case.sas
+    keys: [policy_id]
+    output: "out_sas_35"
+    feeds_report: "Benchmark SAS case 35"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_36
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/36_case.sas
+    keys: [policy_id]
+    output: "out_sas_36"
+    feeds_report: "Benchmark SAS case 36"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_37
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/37_case.sas
+    keys: [policy_id]
+    output: "out_sas_37"
+    feeds_report: "Benchmark SAS case 37"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_38
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/38_case.sas
+    keys: [policy_id]
+    output: "out_sas_38"
+    feeds_report: "Benchmark SAS case 38"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_39
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/39_case.sas
+    keys: [policy_id]
+    output: "out_sas_39"
+    feeds_report: "Benchmark SAS case 39"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_40
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/40_case.sas
+    keys: [policy_id]
+    output: "out_sas_40"
+    feeds_report: "Benchmark SAS case 40"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_41
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/41_case.sas
+    keys: [policy_id]
+    output: "out_sas_41"
+    feeds_report: "Benchmark SAS case 41"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_42
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/42_case.sas
+    keys: [policy_id]
+    output: "out_sas_42"
+    feeds_report: "Benchmark SAS case 42"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_43
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/43_case.sas
+    keys: [policy_id]
+    output: "out_sas_43"
+    feeds_report: "Benchmark SAS case 43"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_44
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/44_case.sas
+    keys: [policy_id]
+    output: "out_sas_44"
+    feeds_report: "Benchmark SAS case 44"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_45
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/45_case.sas
+    keys: [policy_id]
+    output: "out_sas_45"
+    feeds_report: "Benchmark SAS case 45"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_46
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/46_case.sas
+    keys: [policy_id]
+    output: "out_sas_46"
+    feeds_report: "Benchmark SAS case 46"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_47
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/47_case.sas
+    keys: [policy_id]
+    output: "out_sas_47"
+    feeds_report: "Benchmark SAS case 47"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_48
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/48_case.sas
+    keys: [policy_id]
+    output: "out_sas_48"
+    feeds_report: "Benchmark SAS case 48"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_49
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/49_case.sas
+    keys: [policy_id]
+    output: "out_sas_49"
+    feeds_report: "Benchmark SAS case 49"
+    risk: "internal"
+    wave: 3
+  - job_id: BENCH_SAS_50
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/50_case.sas
+    keys: [policy_id]
+    output: "out_sas_50"
+    feeds_report: "Benchmark SAS case 50"
+    risk: "internal"
+    wave: 3

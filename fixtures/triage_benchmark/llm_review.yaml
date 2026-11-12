@@ -1,0 +1,26 @@
+# Small representative subset for exercising the configured local LLM path.
+jobs:
+  - job_id: BENCH_TSQL_50
+    lang: tsql
+    source_path: fixtures/triage_benchmark/tsql/50_case.sql
+    keys: [policy_id]
+    output: out_tsql_50
+    feeds_report: Benchmark T-SQL complex review
+    risk: internal
+    wave: 3
+  - job_id: BENCH_SAS_10
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/10_case.sas
+    keys: [policy_id]
+    output: out_sas_10
+    feeds_report: Benchmark SAS simple review
+    risk: internal
+    wave: 1
+  - job_id: BENCH_SAS_50
+    lang: sas
+    source_path: fixtures/triage_benchmark/sas/50_case.sas
+    keys: [policy_id]
+    output: out_sas_50
+    feeds_report: Benchmark SAS complex review
+    risk: internal
+    wave: 3

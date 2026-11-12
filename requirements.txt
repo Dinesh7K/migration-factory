@@ -1,6 +1,8 @@
 pandas>=2.1
 pyarrow>=14
 sqlglot>=25
+# SAS syntax structure for triage (not a semantic converter).
+tree-sitter-sas[core]>=0.4.2,<0.5
 duckdb>=1.0
 faker>=24
 pyyaml>=6

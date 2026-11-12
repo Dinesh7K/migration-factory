@@ -12,6 +12,8 @@ from factory.triage.triage import approve_retire
 
 st.title("Triage — what not to migrate")
 st.caption("The agent only proposes. A human decides. Retired jobs are archived and restorable.")
+st.info("Pending means the job passed the initial evidence checks; it is not proof the migrated output is correct. "
+        "Complex or structurally uncertain jobs get an AI explanation and lineage cross-check. If that review is uncertain or disagrees with lineage, the job needs human review.")
 
 proposals = registry.list_jobs(status="proposed_retire")
 st.subheader(f"Retire proposals ({len(proposals)})")
@@ -39,17 +41,29 @@ for j in retired:
         st.rerun()
 
 st.subheader("All jobs: purpose and column-level lineage")
-st.caption("Lineage and known gaps come from the SQL parser (exact). Purposes are AI-written when an LLM "
-           "is configured; the AI's risk opinion is advisory and can only escalate, never downgrade.")
+st.caption("T-SQL is parsed with sqlglot; SAS structure is parsed with tree-sitter-sas and lineage may use an AI estimate. "
+           "AI summaries and risk opinions are advisory. Unknown or incomplete lineage is sent for human review.")
 for j in registry.list_jobs():
     ai, lin = j.get("triage_ai") or {}, j.get("lineage") or {}
     with st.expander(f"{j['job_id']} · {j['status']} · {ai.get('summary', '')}"):
         st.markdown(f"**Declared risk:** {j['risk']} · **AI opinion:** {ai.get('risk') or 'none'}"
                     + (f" ({ai['risk_reason']})" if ai.get("risk_reason") else ""))
+        if "understood" in ai:
+            st.markdown("**Complex logic review:** " + ("AI reports a complete explanation" if ai["understood"]
+                        else "AI could not confirm the complete logic"))
+            if ai.get("uncertainties"):
+                st.warning("AI review uncertainties: " + "; ".join(ai["uncertainties"]))
         d = lin.get("difficulty") or {}
         if d:
             st.markdown(f"**Difficulty:** {d['tier']} ({d['score']}/100) · **Route:** {d['route']} · "
                         + "; ".join(d["reasons"]))
+        structure = lin.get("language_structure") or {}
+        if j.get("lang") == "sas":
+            st.caption(f"SAS grammar: {'available' if structure.get('available') else 'unavailable'} · "
+                       f"{structure.get('generic_statements', 0)} generic statements · "
+                       f"{structure.get('parse_errors', 0)} parse errors")
+            if structure.get("generic_statements") or structure.get("parse_errors"):
+                st.warning("Some SAS syntax was not fully structured by the grammar; the AI review must account for this.")
         st.markdown("**Known legacy-vs-Spark gaps:** " + (", ".join(lin.get("known_gaps") or []) or "none found"))
         how = {"parser": "parser (exact)", "parser_partial": "parser, partial", "ai_estimated": "AI estimate",
                "none": "not available"}.get(lin.get("source"), "parser (exact)")
