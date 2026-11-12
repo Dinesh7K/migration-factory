@@ -134,3 +134,66 @@ def test_triage_survives_an_unreachable_llm(tmp_path, monkeypatch, capsys):
     assert len(calls) == 1  # asked once, then plain summaries for the rest of the run
     assert all(r["triage_ai"]["source"] == "offline" for r in out.values())
     assert "LLM unavailable" in capsys.readouterr().out
+
+
+SCRIPT = """DECLARE @year INT = 2022;
+SELECT c.policy_id, SUM(ISNULL(c.paid_amount, 0)) AS paid INTO #paid FROM claims c
+WHERE c.status = 'CLOSED' GROUP BY c.policy_id;
+CREATE TABLE #big (policy_id VARCHAR(20), paid FLOAT);
+INSERT INTO #big SELECT policy_id, paid FROM #paid WHERE paid > 1000;
+SELECT p.region AS k, COUNT(*) AS n, SUM(b.paid) AS total
+FROM #big b JOIN policies p ON p.policy_id = b.policy_id GROUP BY p.region;"""
+
+
+def test_script_lineage_is_traced_through_temp_tables(schema, tmp_path):
+    lin = T.lineage(_job(tmp_path, SCRIPT), schema)
+    assert lin["source"] == "parser" and lin["skipped"] == []
+    assert lin["reads"] == ["claims", "policies"]                      # #paid and #big are not inputs
+    assert lin["column_lineage"] == {"k": ["policies.region"], "n": [], "total": ["claims.paid_amount"]}
+    assert "claims.status" in lin["filters"] and lin["known_gaps"] == ["string_equality"]
+
+
+def test_script_steps_the_parser_cannot_follow_are_listed_not_hidden(schema, tmp_path):
+    sql = SCRIPT.replace("SELECT p.region", "UPDATE #big SET paid = 0 WHERE paid < 0;\nSELECT p.region")
+    lin = T.lineage(_job(tmp_path, sql), schema)
+    assert lin["source"] == "parser_partial" and lin["skipped"] == ["UPDATE"]
+    assert lin["column_lineage"]["total"] == ["claims.paid_amount"]
+
+
+def test_complexity_counts_every_statement(tmp_path):
+    assert T.complexity(J01) == 15                                     # unchanged for a single query
+    assert T.complexity(_job(tmp_path, SCRIPT)) > T.complexity(J13)
+    assert T.complexity(_job(tmp_path, "SELECT FROM WHERE (")) == 100
+
+
+SAS = {"job_id": "J10", "lang": "sas", "source_path": "legacy_jobs/sas/J10_running_total.sas",
+       "keys": ["policy_id"], "output": "running_paid", "risk": "regulatory", "feeds_report": "Finance"}
+
+
+def test_without_an_llm_an_unparseable_job_has_no_lineage_rather_than_a_guess(schema, monkeypatch):
+    monkeypatch.setattr(config, "LLM_PROVIDER", "offline")
+    lin = T.lineage(SAS, schema, use_llm=True)
+    assert lin["source"] == "none" and lin["column_lineage"] == {}
+
+
+def test_ai_estimated_lineage_is_labelled_and_checked_against_the_catalog(schema, monkeypatch):
+    _fake_llm(monkeypatch, json.dumps({
+        "reads": ["claims", "ghost_table"],
+        "outputs": {"policy_id": ["claims.policy_id"], "running_total": ["claims.paid_amount", "claims.made_up"]}}))
+    lin = T.lineage(SAS, schema, use_llm=True)
+    assert lin["source"] == "ai_estimated"
+    assert lin["column_lineage"]["running_total"] == ["claims.made_up", "claims.paid_amount"]
+    assert lin["unverified"] == ["ghost_table", "claims.made_up"]      # named by the AI, not in the catalog
+
+
+def test_ai_estimate_is_only_used_when_the_parser_cannot_do_it(schema, monkeypatch):
+    def boom(prompt, **kw):
+        raise AssertionError("the LLM must not be asked for lineage the parser can compute")
+    monkeypatch.setattr(config, "LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(llm, "complete", boom)
+    assert T.lineage(J01, schema, use_llm=True)["source"] == "parser"
+
+
+def test_unusable_ai_lineage_answer_gives_no_lineage(schema, monkeypatch):
+    _fake_llm(monkeypatch, "The program reads claims.")
+    assert T.lineage(SAS, schema, use_llm=True)["source"] == "none"

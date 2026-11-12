@@ -47,6 +47,15 @@ for j in registry.list_jobs():
         st.markdown(f"**Declared risk:** {j['risk']} · **AI opinion:** {ai.get('risk') or 'none'}"
                     + (f" ({ai['risk_reason']})" if ai.get("risk_reason") else ""))
         st.markdown("**Known legacy-vs-Spark gaps:** " + (", ".join(lin.get("known_gaps") or []) or "none found"))
+        how = {"parser": "parser (exact)", "parser_partial": "parser, partial", "ai_estimated": "AI estimate",
+               "none": "not available"}.get(lin.get("source"), "parser (exact)")
+        st.markdown(f"**Lineage method:** {how} · **Reads:** {', '.join(lin.get('reads') or []) or 'unknown'}")
+        if lin.get("skipped"):
+            st.warning("Steps not followed by the parser, so missing from this lineage: " + ", ".join(lin["skipped"]))
+        if lin.get("source") == "ai_estimated":
+            st.warning("This lineage is an AI estimate for a person to confirm."
+                       + (f" Not found in the catalog: {', '.join(lin['unverified'])}." if lin.get("unverified") else
+                          " Every table and column it names exists in the catalog."))
         rows = [{"output column": col, "comes from": ", ".join(src) or "(no source column, e.g. a row count)"}
                 for col, src in (lin.get("column_lineage") or {}).items()]
         if rows:

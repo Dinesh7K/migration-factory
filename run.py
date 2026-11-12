@@ -45,6 +45,10 @@ def demo() -> None:
         print(f"  {r['job_id']} complexity={r['complexity']:<3} {flag}")
         gaps = r["lineage"]["known_gaps"]
         print(f"       purpose: {r['triage_ai']['summary']}" + (f"  [exposed to: {', '.join(gaps)}]" if gaps else ""))
+        if r["lineage"]["source"] not in ("parser", "none"):
+            print(f"       lineage: {r['lineage']['source']} · reads {', '.join(r['lineage']['reads']) or '?'}"
+                  + (f" · skipped {', '.join(r['lineage']['skipped'])}" if r["lineage"]["skipped"] else "")
+                  + (f" · unverified {', '.join(r['lineage']['unverified'])}" if r["lineage"]["unverified"] else ""))
         if r["triage_ai"]["escalate"]:
             print(f"       AI second opinion: looks regulatory — {r['triage_ai']['risk_reason']}")
     for j in registry.list_jobs(status="proposed_retire"):

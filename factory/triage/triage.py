@@ -3,9 +3,17 @@
 For each job in legacy_jobs/jobs.yaml:
   supported   one parseable query? Multi-statement scripts, DML (MERGE/INSERT) and SQL the parser
               cannot read go straight to `needs_human` with the reason, before any migration.
+              They are still ANALYSED (lineage, gaps, purpose) so the human starts with a map.
   lineage     tables read → output table → report it feeds, plus COLUMN-LEVEL lineage: for every
-              output column, the source table.column(s) it is computed from (sqlglot, exact).
-  known gaps  which legacy-vs-Spark gaps from the pattern library this job is exposed to.
+              output column, the source table.column(s) it is computed from. Method, most exact
+              first (recorded in lineage["source"]):
+                parser          one T-SQL query (sqlglot, exact)
+                parser          multi-statement T-SQL traced through its temp/work tables;
+                parser_partial  same, but UPDATE/MERGE/procedure steps were skipped (listed)
+                ai_estimated    SAS, procedures, unparseable SQL: LLM estimate (prompts/lineage.md)
+                                checked against the catalog; unknown names listed as unverified
+  known gaps  which legacy-vs-Spark gaps from the pattern library this job is exposed to
+              (every statement of a script is checked).
   unused      output feeds no report AND no other job reads it → proposed_retire
   duplicate   same logic fingerprint as an earlier job AND outputs reconcile on real data
               → proposed_retire (proof, not guesswork)
@@ -17,12 +25,13 @@ For each job in legacy_jobs/jobs.yaml:
               purpose is a plain sentence built from the lineage.
 
 Facts (lineage, gaps, support) come from the parser; language comes from the LLM.
-TODO (P1, agent dev): SAS lineage; access-log evidence for "unused" (pitch: production would check
+TODO (P1, agent dev): access-log evidence for "unused" (pitch: production would check
 6–12 months of logs).
 """
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 import networkx as nx
@@ -37,6 +46,10 @@ from factory import config, llm, registry
 from factory.patterns import rules
 from factory.reconcile.reconcile import reconcile
 from factory.runners.legacy import run_legacy
+
+# sqlglot logs a line for every statement it can only keep as raw text (procedures, control flow);
+# triage reports those itself ("skipped", "ai_estimated"), so keep the console clean.
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
 
 
 def load_manifest() -> list[dict]:
@@ -100,39 +113,167 @@ def column_lineage(job: dict, schema: dict | None = None) -> tuple[dict[str, lis
         return {}, []
 
 
-def known_gaps(job: dict) -> list[str]:
-    """Names of the pattern-library gaps (legacy vs Spark semantics) that apply to this job's SQL."""
-    if job["lang"] != "tsql":
-        return []
+def _statements(job: dict) -> list[exp.Expression]:
+    """All parsed statements of a T-SQL job ([] if the parser cannot read it)."""
     try:
-        spark_sql = sqlglot.transpile(_source(job), read="tsql", write="spark")[0]
-        return [name for name in rules.PATTERNS if rules.apply_pattern(name, spark_sql)[1]]
+        return [s for s in sqlglot.parse(_source(job), read="tsql") if s is not None]
     except SqlglotError:
         return []
 
 
-def lineage(job: dict, schema: dict | None = None) -> dict:
-    """Table- and column-level lineage of a job (see module docstring)."""
+def known_gaps(job: dict) -> list[str]:
+    """Names of the pattern-library gaps (legacy vs Spark semantics) that apply to this job's SQL.
+    Every statement of a multi-statement script is checked."""
     if job["lang"] != "tsql":
-        return {"reads": job.get("reads", []), "columns": [], "column_lineage": {}, "filters": [],
-                "known_gaps": []}
-    t = _tree(job)
-    outputs, filters = column_lineage(job, schema)
-    return {"reads": sorted({tb.name for tb in t.find_all(exp.Table)}),
-            "columns": sorted({c.name for c in t.find_all(exp.Column)}),
-            "column_lineage": outputs, "filters": filters, "known_gaps": known_gaps(job)}
+        return []
+    found = set()
+    for stmt in _statements(job):
+        try:
+            spark_sql = stmt.sql(dialect="spark")
+            found.update(name for name in rules.PATTERNS if rules.apply_pattern(name, spark_sql)[1])
+        except SqlglotError:  # a statement Spark SQL cannot express: no pattern applies to it
+            continue
+    return [name for name in rules.PATTERNS if name in found]
+
+
+_EMPTY = {"reads": [], "columns": [], "column_lineage": {}, "filters": [], "known_gaps": [],
+          "source": "none", "skipped": [], "unverified": []}
+# Statements that carry no lineage of their own (declarations, DDL without a query, housekeeping).
+_NEUTRAL = (exp.Declare, exp.Drop, exp.Set, exp.Use, exp.Comment, exp.TruncateTable)
+
+
+def _written_table(stmt: exp.Expression) -> tuple[str, exp.Query] | None:
+    """(table written, query that fills it) for SELECT..INTO, INSERT..SELECT and CREATE..AS SELECT."""
+    if isinstance(stmt, exp.Select) and stmt.args.get("into"):
+        query = stmt.copy()
+        query.set("into", None)
+        return stmt.args["into"].this.name, query
+    if isinstance(stmt, (exp.Insert, exp.Create)) and isinstance(stmt.expression, exp.Query):
+        target = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
+        return target.name, stmt.expression.copy()
+    return None
+
+
+def script_lineage(job: dict, schema: dict | None = None) -> dict:
+    """Parser lineage of a multi-statement T-SQL script, traced THROUGH its temp/work tables.
+
+    Follows SELECT..INTO, INSERT..SELECT and CREATE..AS SELECT step by step, so the final output's
+    columns resolve to base-table columns. Statements it cannot follow (UPDATE, MERGE, DELETE,
+    procedure calls, control flow) are listed in "skipped" and the result is marked
+    "parser_partial": their effect is NOT in the lineage. Returns _EMPTY-shaped dict with
+    source "none" when the script has no query to trace."""
+    built: dict[str, exp.Query] = {}    # work table → query that produces its rows
+    created, skipped, queries, final = set(), [], [], None
+    for stmt in _statements(job):
+        write = _written_table(stmt)
+        if write:
+            name, query = write
+            built[name] = exp.union(built[name], query, distinct=False) if name in built else query
+            queries.append(query)
+            final = query  # a script may end by writing its result table
+        elif isinstance(stmt, exp.Query):
+            queries.append(stmt)
+            final = stmt
+        elif isinstance(stmt, exp.Create):
+            target = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
+            created.add(getattr(target, "name", ""))
+        elif not isinstance(stmt, _NEUTRAL):
+            skipped.append(stmt.key.upper())
+    if final is None:
+        return {**_EMPTY, "skipped": sorted(set(skipped))}
+    internal = set(built) | created
+    try:
+        outputs = {}
+        for sel in final.selects:
+            node = sqlglot_lineage(sel.alias_or_name, final, schema=schema, sources=built, dialect="tsql")
+            outputs[sel.alias_or_name] = sorted({
+                f"{n.source.name}.{n.name.split('.')[-1]}".replace('"', "")
+                for n in node.walk() if isinstance(n.source, exp.Table) and n.source.name not in internal})
+    except SqlglotError:
+        outputs = {}
+    reads, filters, columns = set(), set(), set()
+    for q in queries:
+        real = {t.alias_or_name: t.name for t in q.find_all(exp.Table)}
+        reads.update(n for n in real.values() if n not in internal)
+        columns.update(c.name for c in q.find_all(exp.Column))
+        filters.update(f"{real[c.table]}.{c.name}" for kind in (exp.Where, exp.Join, exp.Having)
+                       for part in q.find_all(kind) for c in part.find_all(exp.Column)
+                       if real.get(c.table) and real[c.table] not in internal)
+    return {"reads": sorted(reads), "columns": sorted(columns), "column_lineage": outputs,
+            "filters": sorted(filters), "known_gaps": known_gaps(job),
+            "source": "parser_partial" if skipped else "parser", "skipped": sorted(set(skipped)),
+            "unverified": []}
+
+
+def estimate_lineage(job: dict, schema: dict | None = None) -> dict:
+    """LLM-estimated lineage for a job no parser can read (SAS, procedures, unparseable SQL).
+
+    The answer is checked against the catalog: every table and table.column the LLM names that
+    does not exist in `schema` is listed in "unverified". Marked source "ai_estimated": it is an
+    estimate for a human to confirm, never proof. Raises llm.LLMUnavailable; returns source
+    "none" if the answer is unusable."""
+    catalog = "; ".join(f"{t}({', '.join(cols)})" for t, cols in (schema or {}).items()) or "unknown"
+    prompt = llm.load_prompt("lineage", lang=job["lang"], source=_source(job), catalog=catalog)
+    data = _json_object(llm.complete(prompt, job_id=job["job_id"], purpose="lineage"))
+    if not data or not isinstance(data.get("reads"), list):
+        return {**_EMPTY, "reads": job.get("reads", [])}
+    reads = sorted({str(r) for r in data["reads"] if isinstance(r, str)})
+    raw = data.get("outputs") if isinstance(data.get("outputs"), dict) else {}
+    outputs = {str(col): sorted({str(s) for s in srcs if isinstance(s, str)})
+               for col, srcs in raw.items() if isinstance(srcs, list)}
+    unverified = []
+    if schema is not None:
+        unverified += [r for r in reads if r not in schema]
+        for ref in sorted({s for srcs in outputs.values() for s in srcs}):
+            table, _, column = ref.rpartition(".")
+            if table not in schema or column not in schema[table]:
+                unverified.append(ref)
+    return {"reads": reads, "columns": sorted(outputs), "column_lineage": outputs, "filters": [],
+            "known_gaps": known_gaps(job), "source": "ai_estimated", "skipped": [], "unverified": unverified}
+
+
+def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dict:
+    """Table- and column-level lineage of ANY job, by the most exact method that works:
+
+    1. one T-SQL query            → parser, exact                          (source "parser")
+    2. multi-statement T-SQL      → parser, traced through work tables     ("parser" / "parser_partial")
+    3. anything else (SAS, procedures, unparseable SQL), when `use_llm` and an LLM is configured
+                                  → LLM estimate checked against the catalog ("ai_estimated")
+    4. otherwise                  → empty                                  ("none")
+    May raise llm.LLMUnavailable in case 3."""
+    if job["lang"] == "tsql":
+        statements = _statements(job)
+        if len(statements) == 1 and isinstance(statements[0], exp.Query) and not statements[0].args.get("into"):
+            t = statements[0]
+            outputs, filters = column_lineage(job, schema)
+            return {"reads": sorted({tb.name for tb in t.find_all(exp.Table)}),
+                    "columns": sorted({c.name for c in t.find_all(exp.Column)}),
+                    "column_lineage": outputs, "filters": filters, "known_gaps": known_gaps(job),
+                    "source": "parser", "skipped": [], "unverified": []}
+        if statements:
+            traced = script_lineage(job, schema)
+            if traced["source"] != "none":
+                return traced
+    if use_llm and llm.available():
+        return estimate_lineage(job, schema)
+    return {**_EMPTY, "reads": job.get("reads", [])}
 
 
 def complexity(job: dict) -> int:
+    """0–100 from joins, subqueries, windows, CASE and filters, summed over every statement, plus
+    10 per extra statement. SAS is a flat 70; SQL the parser cannot read is 100."""
     if job["lang"] != "tsql":
         return 70
-    t = _tree(job)
-    score = 10
-    score += 15 * len(list(t.find_all(exp.Join)))
-    score += 15 * len(list(t.find_all(exp.Subquery)))
-    score += 15 * len(list(t.find_all(exp.Window)))
-    score += 10 * len(list(t.find_all(exp.Case)))
-    score += 5 * len(list(t.find_all(exp.Where)))
+    statements = _statements(job)
+    if not statements:
+        return 100
+    score = 10 * len(statements)
+    for t in statements:
+        score += 15 * len(list(t.find_all(exp.Join)))
+        score += 15 * len(list(t.find_all(exp.Subquery)))
+        score += 15 * len(list(t.find_all(exp.Window)))
+        score += 10 * len(list(t.find_all(exp.Case)))
+        score += 5 * len(list(t.find_all(exp.Where)))
     return min(score, 100)
 
 
@@ -199,15 +340,18 @@ def triage(tables, actor: str = "triage_agent") -> list[dict]:
     blocked = {j["job_id"]: unsupported(j) for j in manifest}
     outputs_read = set()
     lin = {}
+    use_llm = True  # switched off for the rest of the run the first time the LLM is unreachable
     for j in manifest:
-        lin[j["job_id"]] = (lineage(j, schema) if not blocked[j["job_id"]] else
-                            {"reads": [], "columns": [], "column_lineage": {}, "filters": [], "known_gaps": []})
+        try:
+            lin[j["job_id"]] = lineage(j, schema, use_llm)
+        except llm.LLMUnavailable as e:
+            print(f"  triage: LLM unavailable ({e}); lineage from the parser only, plain summaries")
+            use_llm, lin[j["job_id"]] = False, lineage(j, schema, use_llm=False)
         outputs_read.update(lin[j["job_id"]]["reads"])
 
     g = nx.DiGraph()
     seen: dict[str, dict] = {}
     results = []
-    use_llm = True
     for j in manifest:
         jid = j["job_id"]
         for t in lin[jid]["reads"]:
@@ -243,10 +387,11 @@ def triage(tables, actor: str = "triage_agent") -> list[dict]:
         record = {**{k: j.get(k) for k in ("job_id", "lang", "source_path", "keys", "output", "risk",
                                             "wave", "feeds_report")},
                   "status": status, "reason": reason, "lineage": lin[jid], "triage_ai": note, **extra,
-                  "complexity": 100 if blocked[jid] else complexity(j)}
+                  "complexity": complexity(j)}
         registry.upsert_job(record)
         registry.log(jid, actor, "triaged", {"status": status, "reason": reason, "complexity": record["complexity"],
-                                             "known_gaps": lin[jid]["known_gaps"], "ai_review": note})
+                                             "known_gaps": lin[jid]["known_gaps"],
+                                             "lineage_source": lin[jid]["source"], "ai_review": note})
         results.append(record)
     return results
 
