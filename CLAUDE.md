@@ -44,7 +44,7 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
 | `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
 | `factory/runners/spark.py` | M2 run Spark SQL on PySpark (default) / DuckDB fallback | DONE + tested (`tests/test_spark.py`) | data engineer |
-| `factory/triage/triage.py` | M3 lineage, duplicates (with reconcile proof), unused, risk, waves | PARTIAL (LLM label TODO) | agent dev |
+| `factory/triage/triage.py` | M3 column-level lineage, known gaps, unsupported-job guard, duplicates (with reconcile proof), unused, waves, advisory AI review | DONE + tested (`tests/test_triage.py`); SAS lineage TODO | agent dev |
 | `factory/translate/translate.py` | M4 sqlglot → rules → LLM | PARTIAL (sqlglot + rules done) | agent dev |
 | `factory/breaker/breaker.py` | M5 adversarial rows | PARTIAL (deterministic done) | data/testing |
 | `factory/reconcile/reconcile.py` | M6 counts, totals, field diffs | DONE + tested | data engineer |
@@ -113,7 +113,7 @@ Rule (registry `rules` table):
 - [ ] Legacy jobs: 14 T-SQL done (J01–J09, J11–J15: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
 
 ### P1 — what wins
-- [x] `triage/triage.py`: duplicate proof + complexity score. - [ ] LLM business label (prompts/triage.md).
+- [x] `triage/triage.py`: duplicate proof + complexity score; column-level lineage and known gaps (parser, exact); multi-statement / DML / unparseable jobs → `needs_human` at triage; LLM job purpose + risk second opinion (prompts/triage.md), stored in `jobs.triage_ai`. The AI review is advisory: it never changes a status and can only escalate risk.
 - [ ] `breaker/breaker.py`: add LLM-proposed edge cases (prompt `prompts/break.md`) on top of the deterministic ones.
 - [ ] `translate/translate.py`: LLM path for SAS + confidence scoring.
 - [x] `archive/archive.py`: snapshot + restore (basic).
@@ -148,5 +148,5 @@ streamlit run app/app.py
 - Python 3.11+, type hints, small pure functions, docstrings stating inputs/outputs.
 - Prompts live in `factory/prompts/*.md`, never inline in code.
 - Every module function that changes state writes an audit entry.
-- Keep the demo fast (on PySpark: about 7 s offline, 30–40 s with the local Ollama model; about 1 s offline on DuckDB).
+- Keep the demo fast (on PySpark: about 7 s offline; about 75 s with the local Ollama model, of which about 35 s is one triage call per job; about 1 s offline on DuckDB).
 - Declare AI tools used in the README "AI tools used" section (hackathon rule).

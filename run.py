@@ -43,6 +43,10 @@ def demo() -> None:
     for r in triage(tables):
         flag = f"→ {r['status']}: {r['reason']}" if r["status"] != "pending" else f"→ migrate in wave {r['wave']}"
         print(f"  {r['job_id']} complexity={r['complexity']:<3} {flag}")
+        gaps = r["lineage"]["known_gaps"]
+        print(f"       purpose: {r['triage_ai']['summary']}" + (f"  [exposed to: {', '.join(gaps)}]" if gaps else ""))
+        if r["triage_ai"]["escalate"]:
+            print(f"       AI second opinion: looks regulatory — {r['triage_ai']['risk_reason']}")
     for j in registry.list_jobs(status="proposed_retire"):
         approve_retire(j["job_id"], "reviewer")
         print(f"  reviewer approved retirement of {j['job_id']} → archived (restorable)")

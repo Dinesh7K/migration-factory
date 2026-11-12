@@ -19,6 +19,11 @@ for j in proposals:
     with st.container(border=True):
         st.markdown(f"**{j['job_id']}** · {j['risk']} · feeds: {j['feeds_report'] or '—'}")
         st.write(j["reason"])
+        ai = j.get("triage_ai") or {}
+        if ai.get("summary"):
+            st.caption(f"Purpose ({'AI-written' if ai.get('source') == 'llm' else 'from lineage'}): {ai['summary']}")
+        if ai.get("escalate"):
+            st.warning(f"AI second opinion: this looks regulatory. {ai.get('risk_reason', '')}")
         st.json(j["lineage"], expanded=False)
         if st.button(f"Approve retirement of {j['job_id']}", key=f"ret_{j['job_id']}"):
             approve_retire(j["job_id"], "reviewer")
@@ -32,3 +37,19 @@ for j in retired:
     if cols[1].button("Restore", key=f"res_{j['job_id']}"):
         restore_job(j["job_id"])
         st.rerun()
+
+st.subheader("All jobs: purpose and column-level lineage")
+st.caption("Lineage and known gaps come from the SQL parser (exact). Purposes are AI-written when an LLM "
+           "is configured; the AI's risk opinion is advisory and can only escalate, never downgrade.")
+for j in registry.list_jobs():
+    ai, lin = j.get("triage_ai") or {}, j.get("lineage") or {}
+    with st.expander(f"{j['job_id']} · {j['status']} · {ai.get('summary', '')}"):
+        st.markdown(f"**Declared risk:** {j['risk']} · **AI opinion:** {ai.get('risk') or 'none'}"
+                    + (f" ({ai['risk_reason']})" if ai.get("risk_reason") else ""))
+        st.markdown("**Known legacy-vs-Spark gaps:** " + (", ".join(lin.get("known_gaps") or []) or "none found"))
+        rows = [{"output column": col, "comes from": ", ".join(src) or "(no source column, e.g. a row count)"}
+                for col, src in (lin.get("column_lineage") or {}).items()]
+        if rows:
+            st.dataframe(rows, width="stretch", hide_index=True)
+        if lin.get("filters"):
+            st.markdown("**Filter and join columns:** " + ", ".join(lin["filters"]))
