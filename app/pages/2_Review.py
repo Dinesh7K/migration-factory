@@ -43,5 +43,9 @@ if job["status"] == "ready_for_review":
         approve_job(job["job_id"], "reviewer")
         st.success("Approved" + (f" — rule saved: {job['fix_pattern']}" if job["fix_pattern"] else ""))
         st.rerun()
+elif not job["attempts"]:
+    st.warning("Stopped before any reconciliation attempt (at triage or translation) — nothing has been "
+               "proven for this job. A person must confirm or rework it (see the reason above). "
+               "TODO: edit-and-rerun box.")
 else:
     st.warning("Failed after max attempts — a human needs to fix this job. TODO: edit-and-rerun box.")

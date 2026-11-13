@@ -1,33 +1,39 @@
-"""M3 — triage: what to migrate, in what order. PROPOSES only; never retires anything itself.
+"""M3 — triage: understand every job and decide where it goes next. PROPOSES only.
 
-For each job in legacy_jobs/jobs.yaml:
-  supported   one parseable query? Multi-statement scripts, DML (MERGE/INSERT) and SQL the parser
-              cannot read go straight to `needs_human` with the reason, before any migration.
-              They are still ANALYSED (lineage, gaps, purpose) so the human starts with a map.
-  lineage     tables read → output table → report it feeds, plus COLUMN-LEVEL lineage: for every
-              output column, the source table.column(s) it is computed from. Method, most exact
-              first (recorded in lineage["source"]):
-                parser          one T-SQL query (sqlglot, exact)
-                parser          multi-statement T-SQL traced through its temp/work tables;
-                parser_partial  same, but UPDATE/MERGE/procedure steps were skipped (listed)
-                ai_estimated    SAS, procedures, unparseable SQL: LLM estimate (prompts/lineage.md)
-                                checked against the catalog; unknown names listed as unverified
-  known gaps  which legacy-vs-Spark gaps from the pattern library this job is exposed to
-              (every statement of a script is checked).
-  unused      output feeds no report AND no other job reads it → proposed_retire
-  duplicate   same logic fingerprint as an earlier job AND outputs reconcile on real data
-              → proposed_retire (proof, not guesswork)
-  difficulty  0–100 score, an easy/medium/hard tier, the reasons in plain English and the
-              migration route (sqlglot | script | llm), for T-SQL AND SAS. Measured from the code
-              (joins, windows, statements; SAS DATA steps, MERGE, RETAIN, FIRST./LAST., macros).
-  risk/wave   from jobs.yaml (regulatory jobs are never auto-retired); a job with no wave gets
-              one from its tier (easy first)
-  AI review   the LLM writes a plain-English purpose for the (undocumented) job and gives a second
-              opinion on its risk (prompts/triage.md). ADVISORY ONLY: it never changes a status, and
-              it can only escalate ("this looks regulatory"), never downgrade. Without an LLM the
-              purpose is a plain sentence built from the lineage.
+Triage never translates, never retires and never proves output correct (reconciliation does that).
+For each job in the manifest it records:
 
-Facts (lineage, gaps, support) come from the parser; language comes from the LLM.
+  lineage     tables read and, per output column, the source table.column(s). Method, most exact
+              first (lineage["source"]):
+                parser          T-SQL read by sqlglot (one query, or a script traced through its
+                                temp/work tables)
+                parser_partial  a script where UPDATE/MERGE/procedure steps were skipped (listed)
+                ai_estimated    SAS, procedures, unparseable SQL: LLM estimate (prompts/lineage.md),
+                                checked against the catalog; unknown names listed in "unverified"
+                none            no parser and no LLM: nothing is guessed
+              SAS jobs also get lineage["language_structure"] from the tree-sitter SAS grammar.
+  known gaps  legacy-vs-Spark gaps from the pattern library this job's SQL is exposed to.
+  difficulty  0–100 score, easy/medium/hard tier, plain-English reasons and a SUGGESTED route
+              ("sqlglot" | "script" | "llm"). Nothing reads the route yet: translate.py decides by
+              language. Measured from the code, never from table names.
+  AI review   LLM purpose sentence + risk second opinion (prompts/triage.md). Without an LLM the
+              purpose is built from the lineage. See "AI" below for what it may and may not change.
+
+Status triage sets (the only statuses it writes):
+  needs_human      the job is not one query the factory can translate (script, DML, SELECT..INTO,
+                   unreadable SQL), or lineage is partial/unknown/unverified, or the job needs a
+                   deep review that the LLM could not give (see `preflight_reason`)
+  proposed_retire  unused (feeds no report, no other job reads its output, every job's reads known)
+                   or a duplicate whose outputs reconcile on real data; never for regulatory jobs
+  pending          may enter its migration wave; reconciliation and a human still decide later
+A job a later stage or a person has already moved on (approved, retired, ready_for_review,
+needs_human after migration attempts) keeps its status when triage is re-run; only the analysis
+is refreshed.
+
+AI: an AI answer can only make triage MORE cautious. It can escalate risk ("looks regulatory"),
+and for complex jobs (`needs_deep_review`) a missing, uncertain or disagreeing AI review sends the
+job to a human. An AI saying "understood" never approves, retires or proves anything.
+
 TODO (P1, agent dev): access-log evidence for "unused" (pitch: production would check
 6–12 months of logs).
 """
@@ -69,12 +75,28 @@ def _tree(job: dict):
     return sqlglot.parse_one(_source(job), read="tsql")
 
 
-def unsupported(job: dict) -> str | None:
-    """Return why the factory cannot migrate this job as a single query, or None if it can.
+def _statements(job: dict) -> list[exp.Expression]:
+    """All parsed statements of a T-SQL job ([] if the parser cannot read it)."""
+    try:
+        return [s for s in sqlglot.parse(_source(job), read="tsql") if s is not None]
+    except SqlglotError:
+        return []
 
-    Checked first so a multi-step job is never half-migrated (the translator handles one query)."""
+
+def _is_single_query(statements: list[exp.Expression]) -> bool:
+    """True for exactly one read-only query: the only T-SQL shape the translator handles.
+    A `SELECT ... INTO` writes a table, so it is not one."""
+    return (len(statements) == 1 and isinstance(statements[0], exp.Query)
+            and not statements[0].args.get("into"))
+
+
+def unsupported(job: dict) -> str | None:
+    """Return why the factory cannot migrate this T-SQL job as a single query, or None if it can.
+
+    Checked first so a multi-step job is never half-migrated (the translator handles one query).
+    SAS returns None here: its gates are lineage and the deep review in `preflight_reason`."""
     if job["lang"] != "tsql":
-        return None  # SAS: validated against saved expected outputs
+        return None
     try:
         statements = [s for s in sqlglot.parse(_source(job), read="tsql") if s is not None]
     except SqlglotError as e:
@@ -84,8 +106,9 @@ def unsupported(job: dict) -> str | None:
     if len(statements) > 1:
         return (f"Multi-statement job ({len(statements)} statements): the factory migrates "
                 "single-query jobs, so this one needs an engineer")
-    if not isinstance(statements[0], exp.Query):
-        return (f"The job is a {statements[0].key.upper()} statement, not a query: the factory "
+    if not _is_single_query(statements):
+        kind = "SELECT ... INTO" if isinstance(statements[0], exp.Select) else statements[0].key.upper()
+        return (f"The job is a {kind} statement that writes a table, not a query: the factory "
                 "migrates single-query jobs, so this one needs an engineer")
     return None
 
@@ -93,6 +116,14 @@ def unsupported(job: dict) -> str | None:
 def _schema(tables) -> dict | None:
     """{table: {column: type}} for the parser, from the loaded tables (None if no tables given)."""
     return {t: {c: "TEXT" for c in df.columns} for t, df in tables.items()} if tables else None
+
+
+def _source_columns(node, skip: set[str] = frozenset()) -> list[str]:
+    """Sorted base "table.column" names a sqlglot lineage node resolves to (tables in `skip`
+    — CTE-like work tables of a script — are not sources)."""
+    return sorted({f"{n.source.name}.{n.name.split('.')[-1]}".replace('"', "")
+                   for n in node.walk()
+                   if isinstance(n.source, exp.Table) and n.source.name not in skip})
 
 
 def column_lineage(job: dict, schema: dict | None = None) -> tuple[dict[str, list[str]], list[str]]:
@@ -106,9 +137,7 @@ def column_lineage(job: dict, schema: dict | None = None) -> tuple[dict[str, lis
         outputs = {}
         for sel in tree.selects:
             node = sqlglot_lineage(sel.alias_or_name, tree, schema=schema, dialect="tsql")
-            outputs[sel.alias_or_name] = sorted({
-                f"{n.source.name}.{n.name.split('.')[-1]}".replace('"', "")
-                for n in node.walk() if isinstance(n.source, exp.Table)})
+            outputs[sel.alias_or_name] = _source_columns(node)
         cte_names = {cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE)}
         real = {t.alias_or_name: t.name for t in tree.find_all(exp.Table)
                 if t.name.lower() not in cte_names}
@@ -118,14 +147,6 @@ def column_lineage(job: dict, schema: dict | None = None) -> tuple[dict[str, lis
         return outputs, filters
     except SqlglotError:
         return {}, []
-
-
-def _statements(job: dict) -> list[exp.Expression]:
-    """All parsed statements of a T-SQL job ([] if the parser cannot read it)."""
-    try:
-        return [s for s in sqlglot.parse(_source(job), read="tsql") if s is not None]
-    except SqlglotError:
-        return []
 
 
 def known_gaps(job: dict) -> list[str]:
@@ -149,6 +170,12 @@ _EMPTY = {"reads": [], "columns": [], "column_lineage": {}, "filters": [], "know
 _NEUTRAL = (exp.Declare, exp.Drop, exp.Set, exp.Use, exp.Comment, exp.TruncateTable)
 
 
+def _target_name(stmt: exp.Expression) -> str:
+    """Name of the table an INSERT or CREATE statement writes ('' if it has none)."""
+    target = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
+    return getattr(target, "name", "")
+
+
 def _written_table(stmt: exp.Expression) -> tuple[str, exp.Query] | None:
     """(table written, query that fills it) for SELECT..INTO, INSERT..SELECT and CREATE..AS SELECT."""
     if isinstance(stmt, exp.Select) and stmt.args.get("into"):
@@ -156,9 +183,14 @@ def _written_table(stmt: exp.Expression) -> tuple[str, exp.Query] | None:
         query.set("into", None)
         return stmt.args["into"].this.name, query
     if isinstance(stmt, (exp.Insert, exp.Create)) and isinstance(stmt.expression, exp.Query):
-        target = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
-        return target.name, stmt.expression.copy()
+        return _target_name(stmt), stmt.expression.copy()
     return None
+
+
+def _opaque_steps(statements: list[exp.Expression]) -> list[str]:
+    """Kinds of statement (UPDATE, MERGE, EXECUTE, IF, ...) whose effect the parser cannot trace."""
+    return sorted({s.key.upper() for s in statements
+                   if not (_written_table(s) or isinstance(s, (exp.Query, exp.Create) + _NEUTRAL))})
 
 
 def script_lineage(job: dict, schema: dict | None = None) -> dict:
@@ -182,8 +214,7 @@ def script_lineage(job: dict, schema: dict | None = None) -> dict:
             queries.append(stmt)
             final = stmt
         elif isinstance(stmt, exp.Create):
-            target = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
-            created.add(getattr(target, "name", ""))
+            created.add(_target_name(stmt))
         elif not isinstance(stmt, _NEUTRAL):
             skipped.append(stmt.key.upper())
     if final is None:
@@ -193,9 +224,7 @@ def script_lineage(job: dict, schema: dict | None = None) -> dict:
         outputs = {}
         for sel in final.selects:
             node = sqlglot_lineage(sel.alias_or_name, final, schema=schema, sources=built, dialect="tsql")
-            outputs[sel.alias_or_name] = sorted({
-                f"{n.source.name}.{n.name.split('.')[-1]}".replace('"', "")
-                for n in node.walk() if isinstance(n.source, exp.Table) and n.source.name not in internal})
+            outputs[sel.alias_or_name] = _source_columns(node, skip=internal)
     except SqlglotError:
         outputs = {}
     reads, filters, columns = set(), set(), set()
@@ -250,11 +279,10 @@ def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dic
     3. anything else (SAS, procedures, unparseable SQL), when `use_llm` and an LLM is configured
                                   → LLM estimate checked against the catalog ("ai_estimated")
     4. otherwise                  → empty                                  ("none")
-    May raise llm.LLMUnavailable in case 3."""
-    language_structure = sas_parser.analyze(_source(job)) if job["lang"] == "sas" else None
+    May raise llm.LLMUnavailable in case 3. SAS results also carry "language_structure"."""
     if job["lang"] == "tsql":
         statements = _statements(job)
-        if len(statements) == 1 and isinstance(statements[0], exp.Query) and not statements[0].args.get("into"):
+        if _is_single_query(statements):
             t = statements[0]
             outputs, filters = column_lineage(job, schema)
             cte_names = {cte.alias_or_name.lower() for cte in t.find_all(exp.CTE)}
@@ -267,11 +295,12 @@ def lineage(job: dict, schema: dict | None = None, use_llm: bool = False) -> dic
             traced = script_lineage(job, schema)
             if traced["source"] != "none":
                 return traced
+    structure = sas_parser.analyze(_source(job)) if job["lang"] == "sas" else None
     if use_llm and llm.available():
-        estimated = estimate_lineage(job, schema, language_structure)
-        return {**estimated, **({"language_structure": language_structure} if language_structure else {})}
-    return {**_EMPTY, "reads": job.get("reads", []),
-            **({"language_structure": language_structure} if language_structure else {})}
+        result = estimate_lineage(job, schema, structure)
+    else:
+        result = {**_EMPTY, "reads": job.get("reads", [])}
+    return {**result, "language_structure": structure} if structure else result
 
 
 # SAS constructs that drive migration effort: (label shown to the reviewer, pattern, weight).
@@ -331,17 +360,17 @@ def complexity(job: dict) -> int:
         score += 15 * len(list(t.find_all(exp.Window)))
         score += 10 * len(list(t.find_all(exp.Case)))
         score += 5 * len(list(t.find_all(exp.Where)))
-    opaque = {t.key for t in statements
-              if not (_written_table(t) or isinstance(t, (exp.Query, exp.Create) + _NEUTRAL))}
-    return min(score + 30 * len(opaque), 100)
+    return min(score + 30 * len(_opaque_steps(statements)), 100)
 
 
 def difficulty(job: dict) -> dict:
-    """How hard a job is to migrate and which path it takes, for any T-SQL or SAS job.
+    """How hard a job is to migrate and which translation path would suit it, for any T-SQL or SAS job.
 
     Returns {"tier": "easy" | "medium" | "hard", "score": 0–100, "reasons": [plain-English causes],
-    "route": "sqlglot" (one query: rule-based translation) | "script" (multi-statement T-SQL)
-             | "llm" (SAS, procedures, unparseable SQL: the LLM must translate)}.
+    "route": "sqlglot" (one query: rule-based translation) | "script" (multi-statement T-SQL whose
+             steps the parser can trace) | "llm" (SAS, procedures, unparseable SQL)}.
+    The route is a suggestion for the translation stage; it does not change the job's status (a
+    T-SQL job with any route but "sqlglot" is already sent to a human by `unsupported`).
     Measured from the job's own code, never from table names, so it works on any dataset.
     Tiers: easy < 30 ≤ medium < 60 ≤ hard."""
     score = complexity(job)
@@ -351,18 +380,20 @@ def difficulty(job: dict) -> dict:
         route = "llm"
     else:
         statements = _statements(job)
-        single = len(statements) == 1 and isinstance(statements[0], exp.Query) and not statements[0].args.get("into")
-        opaque = sorted({t.key.upper() for t in statements
-                         if not (_written_table(t) or isinstance(t, (exp.Query, exp.Create) + _NEUTRAL))})
+        opaque = _opaque_steps(statements)
         reasons = _tsql_features(statements) if statements else ["the SQL parser cannot read it"]
         reasons += [f"{k} step the parser cannot follow" for k in opaque]
-        route = "sqlglot" if single else "llm" if (opaque or not statements) else "script"
+        route = ("sqlglot" if _is_single_query(statements)
+                 else "llm" if (opaque or not statements) else "script")
         reasons = reasons or ["one flat query"]
     tier = "easy" if score < 30 else "medium" if score < 60 else "hard"
     return {"tier": tier, "score": score, "reasons": reasons, "route": route}
 
 
 def needs_deep_review(job: dict, lin: dict, diff: dict) -> bool:
+    """True when the job is too complex or too uncertain to enter migration on parser evidence alone:
+    a "hard" score (≥ 60), or SAS whose grammar found errors, unstructured statements, macros or
+    %INCLUDEs. Such a job needs the LLM's review to agree with the lineage (see `preflight_reason`)."""
     if diff["score"] >= 60:
         return True
     if job["lang"] != "sas":
@@ -375,9 +406,14 @@ def needs_deep_review(job: dict, lin: dict, diff: dict) -> bool:
                 or constructs.get("include_statement"))
 
 
-def preflight_reason(job: dict, lin: dict, diff: dict, note: dict | None = None,
+def preflight_reason(job: dict, lin: dict, note: dict | None = None,
                      deep_review: bool = False) -> str | None:
-    """Why a job needs a person before it can enter an automatic migration wave."""
+    """Why a job needs a person before it can enter an automatic migration wave, or None.
+
+    Checks, in order: lineage is complete (not partial, not missing, every name in the catalog);
+    non-T-SQL has an AI lineage estimate; SAS was read by its grammar; and, for a deep-review job,
+    the LLM answered, reported no uncertainty and named the same source tables as the lineage.
+    Passing these checks lets a job be migrated; it is not evidence the migration is correct."""
     if lin["source"] == "parser_partial" or lin.get("skipped"):
         return "Lineage is partial because triage skipped one or more steps"
     if lin["source"] == "none":
@@ -473,7 +509,9 @@ def ai_review(job: dict, lin: dict, use_llm: bool = True, *, diff: dict | None =
 
     Returns {"summary", "risk" ("regulatory" | "internal" | None), "risk_reason", "source",
     "escalate"}. `source` is "llm", or "offline" when no LLM is configured / reachable / usable.
-    `escalate` is True only when the LLM thinks a job declared internal looks regulatory."""
+    `escalate` is True only when the LLM thinks a job declared internal looks regulatory.
+    With `deep_review` and an LLM answer, also "understood", "uncertainties" and "reads" (the
+    tables the LLM says the job reads), which `preflight_reason` compares with the lineage."""
     note = {"summary": _plain_summary(job, lin), "risk": None, "risk_reason": "", "source": "offline",
             "escalate": False}
     if not (use_llm and llm.available()):
@@ -488,7 +526,7 @@ def ai_review(job: dict, lin: dict, use_llm: bool = True, *, diff: dict | None =
                    "T-SQL runs with SQL Server semantics; check the listed compatibility gaps against Spark.")
     prompt = llm.load_prompt("triage", lang=job["lang"], source=_source(job),
                              reads=", ".join(lin.get("reads") or []) or "unknown",
-                             column_lineage=json.dumps(lin.get("column_lineage") or {}) or "unknown",
+                             column_lineage=json.dumps(lin["column_lineage"]) if lin.get("column_lineage") else "unknown",
                              lineage_source=lin.get("source", "none"),
                              feeds_report=job.get("feeds_report") or "none known",
                              difficulty=(f"{diff['tier']} ({diff['score']}/100); route {diff['route']}"
@@ -518,6 +556,11 @@ def ai_review(job: dict, lin: dict, use_llm: bool = True, *, diff: dict | None =
 
 
 def triage(tables, actor: str = "triage_agent", manifest_path=None) -> list[dict]:
+    """Analyse every job in the manifest, store it in the registry and return the records.
+
+    Each record has status (see the module docstring), reason, lineage (with "difficulty"),
+    triage_ai and complexity. If the LLM is unreachable, triage asks it once, then carries on
+    with the parser only; jobs that needed the LLM then go to `needs_human`."""
     manifest = load_manifest() if manifest_path is None else load_manifest(manifest_path)
     schema = _schema(tables)
     blocked = {j["job_id"]: unsupported(j) for j in manifest}
@@ -531,6 +574,9 @@ def triage(tables, actor: str = "triage_agent", manifest_path=None) -> list[dict
             print(f"  triage: LLM unavailable ({e}); lineage from the parser only, plain summaries")
             use_llm, lin[j["job_id"]] = False, lineage(j, schema, use_llm=False)
         outputs_read.update(lin[j["job_id"]]["reads"])
+    # Jobs whose inputs may be missing from outputs_read: no "unused" claim can rest on them.
+    unknown_reads = [jid for jid, li in lin.items()
+                     if li["source"] in {"none", "parser_partial"} or li.get("unverified")]
 
     seen: dict[str, dict] = {}
     results = []
@@ -546,34 +592,37 @@ def triage(tables, actor: str = "triage_agent", manifest_path=None) -> list[dict
             use_llm, note = False, ai_review(j, lin[jid], use_llm=False, diff=diff,
                                              deep_review=deep_review, schema=schema)
 
-        status, reason, extra = "pending", "", {}
-        fp = None if blocked[jid] else fingerprint(j)
-        if blocked[jid]:
-            # Not a retire proposal and not migratable: a person must look at it.
-            status, reason = "needs_human", blocked[jid]
-            extra = {"confidence": 0.0, "method": "not attempted", "attempts": 0}
-        else:
-            gate = preflight_reason(j, lin[jid], diff, note, deep_review)
-            if gate:
-                status, reason = "needs_human", gate
-                extra = {"confidence": 0.0, "method": "not attempted", "attempts": 0}
+        # 1. Gate: anything the factory cannot migrate automatically goes to a person.
+        gate = blocked[jid] or preflight_reason(j, lin[jid], note, deep_review)
+        status, reason = ("needs_human", gate) if gate else ("pending", "")
 
-        if status == "pending" and fp and fp in seen and j["risk"] != "regulatory":
-            other = seen[fp]
-            proof = reconcile(run_legacy(other, tables), run_legacy(j, tables), j["keys"])
-            if proof.passed:
+        # 2. Retirement proposals, only for migratable non-regulatory jobs, only with evidence.
+        fp = None if blocked[jid] else fingerprint(j)
+        if status == "pending" and j["risk"] != "regulatory":
+            other = seen.get(fp) if fp else None
+            proof = reconcile(run_legacy(other, tables), run_legacy(j, tables), j["keys"]) if other else None
+            if proof and proof.passed:
                 status, reason = "proposed_retire", f"Duplicate of {other['job_id']} (outputs reconcile: {proof.summary()})"
-        elif (status == "pending" and not j.get("feeds_report") and j["output"] not in outputs_read
-              and j["risk"] != "regulatory"):
-            if lin[jid]["source"] in {"parser", "ai_estimated"} and not lin[jid].get("unverified"):
-                status, reason = "proposed_retire", "Unused: output feeds no report and no other job reads it"
-            else:
-                status, reason = "needs_human", "Cannot assess whether this job is used because lineage is incomplete"
+            elif not j.get("feeds_report") and j["output"] not in outputs_read:
+                unknown = [o for o in unknown_reads if o != jid]
+                if unknown:
+                    status, reason = "needs_human", ("Looks unused, but cannot confirm: the inputs of "
+                                                     f"{', '.join(unknown)} are not fully known")
+                else:
+                    status, reason = "proposed_retire", "Unused: output feeds no report and no other job reads it"
         if fp and fp not in seen:
             seen[fp] = j
 
         if note["escalate"] and status == "proposed_retire":
             reason += f" AI second opinion: this looks regulatory ({note['risk_reason']}) — check before approving."
+
+        # 3. Never undo a later stage or a person: re-running triage refreshes the analysis only.
+        decided, existing = status, registry.get_job(jid)
+        kept = _moved_on(existing)
+        if kept:
+            status, reason = existing["status"], existing["reason"]
+        extra = ({"confidence": 0.0, "method": "not attempted", "attempts": 0}
+                 if status == "needs_human" and not kept else {})
 
         lin[jid]["difficulty"] = diff
         record = {**{k: j.get(k) for k in ("job_id", "lang", "source_path", "keys", "output", "risk",
@@ -584,11 +633,22 @@ def triage(tables, actor: str = "triage_agent", manifest_path=None) -> list[dict
             record["wave"] = {"easy": 1, "medium": 2, "hard": 3}[diff["tier"]]
         registry.upsert_job(record)
         registry.log(jid, actor, "triaged", {"status": status, "reason": reason, "complexity": record["complexity"],
+                                             "triage_decision": decided, "kept_status": kept,
                                              "known_gaps": lin[jid]["known_gaps"],
                                              "difficulty": diff, "lineage_source": lin[jid]["source"],
                                              "ai_review": note})
         results.append(record)
     return results
+
+
+def _moved_on(job: dict | None) -> bool:
+    """True when a later stage or a person has already moved this job past triage (approved,
+    retired, translated, ready_for_review, or needs_human after migration attempts)."""
+    if not job:
+        return False
+    if job["status"] == "needs_human":
+        return bool(job.get("attempts"))
+    return job["status"] not in {"pending", "proposed_retire"}
 
 
 def approve_retire(job_id: str, reviewer: str = "reviewer") -> None:

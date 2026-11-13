@@ -108,9 +108,20 @@ def _run_sqlserver(sql: str, tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
         return pd.read_sql_query(text(sql), con)
 
 
+def sas_expected_path(job: dict):
+    """Where the saved output of a SAS job lives (produced once by running it in SAS)."""
+    return config.LEGACY_JOBS / "expected" / f"{job['job_id']}.csv"
+
+
+def has_legacy_output(job: dict) -> bool:
+    """True when the legacy side can produce this job's output: always for T-SQL, and for SAS
+    only once its expected CSV exists. Without it a migrated job has nothing to be proven against."""
+    return job["lang"] != "sas" or sas_expected_path(job).exists()
+
+
 def run_legacy(job: dict, tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     if job["lang"] == "sas":
-        expected = config.LEGACY_JOBS / "expected" / f"{job['job_id']}.csv"
+        expected = sas_expected_path(job)
         if not expected.exists():
             raise FileNotFoundError(f"No expected output for SAS job {job['job_id']}: {expected}")
         return pd.read_csv(expected)
