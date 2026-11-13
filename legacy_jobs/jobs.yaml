@@ -135,13 +135,18 @@ jobs:
     feeds_report: Actuarial - Claim frequency
     risk: regulatory
     wave: 4
-  # SAS example: enable once legacy_jobs/expected/J10.csv exists
-  # - job_id: J10
-  #   lang: sas
-  #   source_path: legacy_jobs/sas/J10_running_total.sas
-  #   keys: [policy_id]
-  #   output: running_paid
-  #   reads: [claims]
-  #   feeds_report: Finance - Claims ledger
-  #   risk: regulatory
-  #   wave: 2
+
+# SAS jobs waiting for their expected output. Triage and migrate ignore this list.
+#   1. python run.py sas-kit J10      (writes sas_kit/J10/ + legacy_jobs/expected/J10.inputs.json)
+#   2. run sas_kit/J10/run_J10.sas in SAS OnDemand, save its J10.csv as legacy_jobs/expected/J10.csv
+#   3. move the entry up into `jobs:` and commit the .csv + .inputs.json
+sas_awaiting_expected:
+  - job_id: J10
+    lang: sas
+    source_path: legacy_jobs/sas/J10_running_total.sas
+    keys: [policy_id]
+    output: running_paid
+    reads: [claims]
+    feeds_report: Finance - Claims ledger
+    risk: regulatory
+    wave: 2

@@ -43,6 +43,7 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 | `factory/llm.py` | the ONLY LLM entry point (ollama / openai / azure / offline) | DONE for Ollama (openai/azure untested) | agent dev |
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
 | `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
+| `factory/runners/sas_kit.py` | `run.py sas-kit JOB`: input CSVs + SAS program to make a SAS job's expected CSV in SAS OnDemand; input fingerprint so a CSV from other data is never compared | DONE + tested (`tests/test_sas_kit.py`) | data/testing |
 | `factory/runners/spark.py` | M2 run Spark SQL on PySpark (default) / DuckDB fallback | DONE + tested (`tests/test_spark.py`) | data engineer |
 | `factory/triage/triage.py` | M3 difficulty (easy/medium/hard + reasons + route) for T-SQL and SAS, column-level lineage, known gaps, unsupported-job guard, duplicates (with reconcile proof), unused, waves, advisory AI review | DONE + tested (`tests/test_triage.py`) | agent dev |
 | `factory/translate/translate.py` | M4 sqlglot (T-SQL, plain SAS PROC SQL) → LLM (other SAS, SQL sqlglot cannot convert) → rules; AI SQL checked against the catalog with one retry | DONE + tested (`tests/test_translate.py`, fake LLM; SAS not yet reconciled: no expected CSVs) | agent dev |
@@ -110,12 +111,12 @@ Rule (registry `rules` table):
 - [x] `agents/migrate.py`: `llm_fix()` when a provider is set (prompt in `factory/prompts/fix.md`), falling back to `offline_fix()`; returns plain-English reason. When the LLM picks a library pattern the rewrite comes from the library.
 - [x] `runners/spark.py`: `_run_pyspark()` (PySpark 4, Java 17/21).
 - [ ] `runners/legacy.py`: `_run_sqlserver()` is written (pandas `to_sql` via SQLAlchemy + pyodbc) but has never been run against a live server: test it.
-- [ ] Legacy jobs: 16 T-SQL done (J01–J09, J11–J17: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs.
+- [ ] Legacy jobs: 16 T-SQL done (J01–J09, J11–J17: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs. J10 waits in `jobs.yaml` `sas_awaiting_expected:`; steps in `docs/HANDOVER_SAS.md` (owner: Eesha).
 
 ### P1 — what wins
 - [x] `triage/triage.py`: duplicate proof + complexity score; column-level lineage and known gaps (parser, exact); multi-statement / DML / unparseable jobs → `needs_human` at triage; LLM job purpose + risk second opinion (prompts/triage.md), stored in `jobs.triage_ai`. The AI review is advisory and can only add caution: it can escalate risk, and for hard or macro/uncertain SAS jobs a missing, uncertain or disagreeing AI review sends the job to `needs_human`; an AI "understood" never approves, retires or proves anything. Re-running triage keeps statuses set later (approved, retired, ready_for_review, needs_human after migration attempts); `restore` only accepts retired jobs. Lineage method is recorded in `lineage["source"]`: `parser` (one query, or a multi-statement script traced through its temp tables), `parser_partial` (UPDATE/MERGE/procedure steps skipped and listed), `ai_estimated` (SAS, procedures, unparseable SQL: LLM estimate from prompts/lineage.md, checked against the catalog, unknown names in `unverified`), `none`.
 - [ ] `breaker/breaker.py`: add LLM-proposed edge cases (prompt `prompts/break.md`) on top of the deterministic ones.
-- [ ] `translate/translate.py`: LLM path for SAS + confidence scoring.
+- [x] `translate/translate.py`: LLM path for SAS + confidence scoring (method base score, minus uncovered gaps, lower after a retry). Not yet proven on a real SAS expected CSV.
 - [x] `archive/archive.py`: snapshot + restore (basic).
 - [x] `app/`: approve, retire/restore, KPIs, fixer calls per wave, ROI. - [ ] Polish: lineage graph view, edit-and-rerun for `needs_human` jobs.
 
@@ -140,6 +141,7 @@ python run.py data        # build data into data/generated + lakehouse/bronze
 python run.py triage      # register jobs, lineage, proposals
 python run.py migrate     # run the agent loop on all pending jobs (wave order)
 python run.py demo        # data + triage + migrate + auto-approve J01 + wave 2 (prints the £500 story)
+python run.py sas-kit J10 # data + SAS program to produce a SAS job's expected CSV in SAS OnDemand
 pytest -q
 streamlit run app/app.py
 ```

@@ -6,7 +6,7 @@ The LLM is allowed to be wrong: nothing reaches `ready_for_review` unless reconc
 After MAX_ATTEMPTS failures → `needs_human`. Humans approve via approve_job() (or the app).
 A job also stops at `needs_human` (0 attempts, nothing proven) when translation fails (LLM down,
 AI SQL failing its checks) or when there is no legacy output to compare with (SAS without its
-expected CSV): the draft code is kept for the reviewer, and the rest of the wave carries on.
+expected CSV, or a CSV made from different input data): the draft code is kept for the reviewer, and the rest of the wave carries on.
 
 Fixer:
   llm_fix      LLM reads code + diffs, returns new code + plain-English reason (prompts/fix.md)
@@ -26,6 +26,7 @@ from factory.breaker.breaker import break_data
 from factory.patterns import rules
 from factory.reconcile.reconcile import ReconResult, reconcile
 from factory.runners.legacy import has_legacy_output, run_legacy, sas_expected_path
+from factory.runners.sas_kit import input_mismatch
 from factory.runners.spark import run_new
 from factory.translate.translate import TranslationError, translate
 
@@ -133,6 +134,9 @@ def migrate_job(job: dict, tables: dict[str, pd.DataFrame]) -> dict:
             jid, "Translated draft cannot be proven: no legacy output to reconcile against "
                  f"(run the {job['lang'].upper()} job once and save it as {sas_expected_path(job).relative_to(config.ROOT)})",
             target_code=code, confidence=confidence, method=method)
+    if job["lang"] == "sas" and (problem := input_mismatch(job, tables)):
+        return _stop_for_human(jid, f"Translated draft cannot be proven: {problem}",
+                               target_code=code, confidence=confidence, method=method)
     test_tables, added = break_data(job, tables)
     reason, pattern = "", None
 
