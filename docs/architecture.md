@@ -33,4 +33,4 @@ flowchart TD
 | Registry + audit | `factory/registry.py` | SQLite |
 | App | `app/` | Streamlit |
 
-TODO (business lead): export a one-page PNG of this diagram as `docs/architecture.png` for submission.
+One-page submission diagram: [`docs/architecture.png`](architecture.png) (also `architecture.pdf`, `architecture.svg`).
