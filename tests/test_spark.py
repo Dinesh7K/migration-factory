@@ -47,6 +47,25 @@ def test_pyspark_treats_missing_values_as_null_not_nan(spark):
     assert p7["n_paid"] == 0 and pd.isna(p7["total_paid"])  # a NaN would be counted and summed
 
 
+def test_pandas_path_for_older_spark_connect_keeps_nulls(spark, monkeypatch):
+    """Databricks serverless clients that refuse an Arrow table get pandas: NaN must still be NULL."""
+    import pyarrow as pa
+
+    class NoArrow:
+        def __getattr__(self, name):
+            return getattr(spark, name)
+
+        def createDataFrame(self, data, schema=None):
+            if isinstance(data, pa.Table):
+                raise TypeError("data is a pyarrow Table")
+            return spark.createDataFrame(data, schema=schema)
+
+    monkeypatch.setattr(runner, "_session", lambda: NoArrow())
+    out = _by_policy(runner._run_pyspark(SQL, {"claims": CLAIMS}))
+    assert out["P102"]["total_paid"] == 1000.0
+    assert out["P7"]["n_paid"] == 0 and pd.isna(out["P7"]["total_paid"])
+
+
 def test_pyspark_and_duckdb_agree_on_this_query(spark):
     a = runner._run_pyspark(SQL, {"claims": CLAIMS}).sort_values("policy_id").reset_index(drop=True)
     b = runner._run_duckdb(SQL, {"claims": CLAIMS}).sort_values("policy_id").reset_index(drop=True)
@@ -60,11 +79,21 @@ def test_demo_story_end_to_end_on_pyspark(spark, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LLM_PROVIDER", "offline")
     monkeypatch.setattr(config, "LEGACY_MODE", "emulator")
     monkeypatch.setattr(config, "NEW_MODE", "spark")
+    # Fixed synthetic data in a temp folder: the story must not depend on whether this machine has
+    # freMTPL2 in data/raw, and the test must not overwrite the developer's data/ or lakehouse/.
+    monkeypatch.setattr(config, "DATA_RAW", tmp_path / "raw")
+    monkeypatch.setattr(config, "DATA_GEN", tmp_path / "generated")
+    monkeypatch.setattr(config, "LAKEHOUSE", tmp_path / "lakehouse")
     monkeypatch.setattr(runner, "_FALLBACK", None)
     run.demo()
     assert runner.engine() == "spark"
+    from factory.triage.triage import load_manifest
     jobs = {j["job_id"]: j for j in registry.list_jobs()}
-    assert all(j["status"] == "approved" for jid, j in jobs.items() if jid not in {"J02", "J03"})
+    # Offline, wave-5 SAS jobs stop at needs_human (the LLM translates DATA steps) and J03 cannot be
+    # proven unused; see test_pipeline.py::test_demo_story_end_to_end. The T-SQL story must not change.
+    sas = {j["job_id"] for j in load_manifest() if j["lang"] == "sas"}
+    assert all(j["status"] == "approved" for jid, j in jobs.items() if jid not in {"J02", "J03"} | sas)
+    assert all(jobs[jid]["status"] in {"approved", "needs_human"} for jid in sas if jid in jobs)
     assert (jobs["J01"]["attempts"], jobs["J01"]["fix_pattern"]) == (2, "string_equality")
     assert jobs["J05"]["attempts"] == 1 and "R01" in jobs["J05"]["method"]
     assert [run.fixer_calls(w) for w in (1, 2, 3, 4)] == [1, 0, 3, 0]

@@ -86,6 +86,11 @@ def test_demo_story_end_to_end(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(config, "LLM_PROVIDER", "offline")
     monkeypatch.setattr(config, "LEGACY_MODE", "emulator")
     monkeypatch.setattr(config, "NEW_MODE", "duckdb")
+    # Fixed synthetic data in a temp folder: the story must not depend on whether this machine has
+    # freMTPL2 in data/raw, and the test must not overwrite the developer's data/ or lakehouse/.
+    monkeypatch.setattr(config, "DATA_RAW", tmp_path / "raw")
+    monkeypatch.setattr(config, "DATA_GEN", tmp_path / "generated")
+    monkeypatch.setattr(config, "LAKEHOUSE", tmp_path / "lakehouse")
     run.demo()
     jobs = {j["job_id"]: j for j in registry.list_jobs()}
     sas = {j["job_id"] for j in load_manifest() if j["lang"] == "sas"}

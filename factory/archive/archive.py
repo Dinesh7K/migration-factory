@@ -26,7 +26,9 @@ def archive_job(job: dict, approved_by: str) -> str:
     except Exception as e:  # archiving must never fail because a snapshot failed
         (dest / "snapshot_error.txt").write_text(str(e))
     (dest / "lineage.json").write_text(json.dumps({"lineage": job.get("lineage"), "reason": job.get("reason")}, indent=2))
-    registry.add_archive(job["job_id"], str(dest.relative_to(config.ROOT)), job.get("reason", ""), approved_by)
+    # Repo-relative when the lakehouse is in the repo (laptop); absolute when it is elsewhere (a Volume).
+    where = dest.relative_to(config.ROOT) if dest.is_relative_to(config.ROOT) else dest
+    registry.add_archive(job["job_id"], str(where), job.get("reason", ""), approved_by)
     registry.update_job(job["job_id"], status="retired")
     registry.log(job["job_id"], approved_by, "retired", {"archive": str(dest)})
     return str(dest)

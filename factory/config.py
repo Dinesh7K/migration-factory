@@ -9,9 +9,10 @@ except ImportError:  # dotenv is optional
     pass
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_RAW = ROOT / "data" / "raw"
-DATA_GEN = ROOT / "data" / "generated"
-LAKEHOUSE = ROOT / "lakehouse"
+# Data folders can live outside the repo (e.g. a Unity Catalog Volume on Databricks: see docs/DATABRICKS.md).
+DATA_RAW = Path(os.getenv("MG_DATA_RAW", ROOT / "data" / "raw"))
+DATA_GEN = Path(os.getenv("MG_DATA_GEN", ROOT / "data" / "generated"))
+LAKEHOUSE = Path(os.getenv("MG_LAKEHOUSE", ROOT / "lakehouse"))
 LEGACY_JOBS = ROOT / "legacy_jobs"
 JOBS_YAML = LEGACY_JOBS / "jobs.yaml"
 PROMPTS = ROOT / "factory" / "prompts"
@@ -19,7 +20,7 @@ DB_PATH = Path(os.getenv("FACTORY_DB", ROOT / "factory.db"))
 
 LEGACY_MODE = os.getenv("LEGACY_MODE", "emulator")   # emulator | sqlserver
 NEW_MODE = os.getenv("NEW_MODE", "spark")            # spark (falls back to duckdb, loudly) | duckdb
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "offline")  # offline | openai | azure | ollama
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "offline")  # offline | gemini | openai | azure | ollama
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120"))  # seconds per call; local models are slow on first load
 
 MAX_ATTEMPTS = 3

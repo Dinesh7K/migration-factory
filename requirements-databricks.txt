@@ -1,0 +1,11 @@
+# Installed by databricks/MigrateGuard_demo.py on Databricks (Free Edition / serverless).
+# Do NOT add pyspark, pandas, numpy or pyarrow here: Databricks provides them, and installing
+# another pyspark breaks the cluster's Spark session.
+sqlglot>=25
+tree-sitter-sas[core]>=0.4.2,<0.5
+duckdb>=1.0
+faker>=24
+pyyaml>=6
+networkx>=3.2
+python-dotenv>=1.0
+openai>=1.30

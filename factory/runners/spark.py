@@ -1,7 +1,8 @@
 """M2 — run MIGRATED code (the "new world").
 
 Modes (NEW_MODE):
-  spark   (default) Local PySpark (`pip install -r requirements.txt`, Java 17 or 21). One session is
+  spark   (default) On Databricks: the cluster's own Spark session (see docs/DATABRICKS.md).
+          Elsewhere: local PySpark (`pip install -r requirements.txt`, Java 17 or 21). One session is
           reused for the whole run; the first query pays the JVM start-up (a few seconds).
           If PySpark or Java is missing, the run falls back to DuckDB and says so loudly: on screen,
           in the audit log, and in `engine_label()`. A fallback run is NOT proof on Spark.
@@ -30,12 +31,20 @@ def _run_duckdb(spark_sql: str, tables: dict[str, pd.DataFrame]) -> pd.DataFrame
 
 
 _SPARK = None
+ON_DATABRICKS = "DATABRICKS_RUNTIME_VERSION" in os.environ
 _FALLBACK: str | None = None  # None = not checked yet, "" = Spark works, text = why it does not
 
 
 def _session():
-    """Start (once) and return the local SparkSession."""
+    """Start (once) and return the SparkSession: Databricks' own session there, a local one elsewhere."""
     global _SPARK
+    if _SPARK is None and ON_DATABRICKS:
+        from pyspark.sql import SparkSession
+        _SPARK = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
+        try:
+            _SPARK.conf.set("spark.sql.session.timeZone", "UTC")
+        except Exception:  # some serverless compute does not allow setting confs; dates are plain text here
+            pass
     if _SPARK is None:
         os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")  # no hostname lookup, no start-up warning
         # PySpark 4 warns on every conversion that pandas 3 is "not yet fully supported"; the paths
@@ -77,6 +86,8 @@ def engine() -> str:
 def engine_label() -> str:
     """One-line description of the new-side engine for the demo header and the app."""
     if engine() == "spark":
+        if ON_DATABRICKS:
+            return f"Databricks Spark {_session().version} (runtime {os.environ['DATABRICKS_RUNTIME_VERSION']})"
         import pyspark
         return f"PySpark {pyspark.__version__} (local)"
     if config.NEW_MODE == "spark":
@@ -96,12 +107,31 @@ def _run_pyspark(spark_sql: str, tables: dict[str, pd.DataFrame]) -> pd.DataFram
     reads = {t.name for t in sqlglot.parse_one(spark_sql, read="spark").find_all(sqlglot.exp.Table)}
     for name in reads & set(tables):
         arrow = pa.Table.from_pandas(tables[name], preserve_index=False)
-        spark.createDataFrame(arrow).createOrReplaceTempView(name)
+        try:
+            sdf = spark.createDataFrame(arrow)
+        except (TypeError, ValueError):  # older Spark Connect clients (serverless) take pandas, not Arrow
+            df = tables[name]
+            sdf = spark.createDataFrame(df.astype(object).where(df.notna(), None), schema=_ddl(arrow.schema))
+        sdf.createOrReplaceTempView(name)
     out = spark.sql(spark_sql).toPandas()
     for c in out.columns:
         if out[c].dtype == object and out[c].map(lambda v: isinstance(v, decimal.Decimal)).any():
             out[c] = out[c].astype(float)
     return out
+
+
+def _ddl(schema) -> str:
+    """Spark DDL schema from an Arrow schema, so all-NULL columns keep their type."""
+    import pyarrow as pa
+    def t(dt):
+        if pa.types.is_floating(dt):
+            return "DOUBLE"
+        if pa.types.is_integer(dt):
+            return "BIGINT"
+        if pa.types.is_boolean(dt):
+            return "BOOLEAN"
+        return "STRING"
+    return ", ".join(f"`{f.name}` {t(f.type)}" for f in schema)
 
 
 def run_new(spark_sql: str, tables: dict[str, pd.DataFrame]) -> pd.DataFrame:

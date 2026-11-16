@@ -40,7 +40,7 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 |---|---|---|---|
 | `factory/config.py` | settings | DONE | — |
 | `factory/registry.py` | SQLite: jobs, audit_log, rules, archive_index | DONE | everyone |
-| `factory/llm.py` | the ONLY LLM entry point (ollama / openai / azure / offline) | DONE for Ollama (openai/azure untested) | agent dev |
+| `factory/llm.py` | the ONLY LLM entry point (gemini / ollama / openai / azure / offline) | DONE for Ollama; Gemini wired (OpenAI-compatible endpoint), openai/azure untested | agent dev |
 | `factory/data_gen/build_db.py` | M1 data (freMTPL2 + Faker + mess) | DONE | data/testing |
 | `factory/runners/legacy.py` | M2 run T-SQL on SQL Server / emulator; SAS expected CSV | PARTIAL (emulator done; sqlserver written, untested) | data engineer |
 | `factory/runners/sas_kit.py` | `run.py sas-kit JOB`: input CSVs + SAS program to make a SAS job's expected CSV in SAS OnDemand; input fingerprint so a CSV from other data is never compared | DONE + tested (`tests/test_sas_kit.py`) | data/testing |
@@ -52,6 +52,7 @@ If you change anything, re-run `python run.py demo` and `pytest` and confirm thi
 | `factory/agents/migrate.py` | M7 the loop | DONE (LLM fixer with offline fallback) | agent dev |
 | `factory/patterns/rules.py` | M8 save/apply rules (4 patterns) | DONE (basic) | agent dev |
 | `factory/archive/archive.py` | snapshot + restore retired jobs | DONE (basic) | data engineer |
+| `databricks/MigrateGuard_demo.py` | Databricks notebook: full factory on Databricks Spark, publishes bronze/gold/jobs/rules/audit as Delta (`docs/DATABRICKS.md`) | WRITTEN, tested locally, not yet run on Databricks | — |
 | `app/` | Streamlit: Triage (approve/restore), Review (approve), Dashboard (KPIs, ROI) | WORKING (polish TODO) | business lead |
 | `docs/` | submission docs | TEMPLATES | business lead |
 
@@ -101,6 +102,8 @@ Rule (registry `rules` table):
   - `NEW_MODE=spark` (default) → local PySpark 4 (needs Java 17 or 21). Use for the demo and every claim. If PySpark or
     Java is missing, `runners/spark.py` falls back to DuckDB, prints a warning and logs `engine_fallback`; that run is
     not proof on Spark. `python run.py demo` prints the engine used on its first line.
+  - On Databricks (`DATABRICKS_RUNTIME_VERSION` set), `NEW_MODE=spark` uses the cluster's own Spark session.
+    Data folders move to a Volume via `MG_DATA_RAW`, `MG_DATA_GEN`, `MG_LAKEHOUSE`; the registry via `FACTORY_DB`.
   - `NEW_MODE=duckdb` → DuckDB, which shares Spark's case- and space-sensitive text semantics. Fast, no Java.
     Development and test mode only (`tests/test_pipeline.py` uses it so tests run without Java).
 
@@ -121,7 +124,7 @@ Rule (registry `rules` table):
 - [x] `app/`: approve, retire/restore, KPIs, fixer calls per wave, ROI. - [ ] Polish: lineage graph view, edit-and-rerun for `needs_human` jobs.
 
 ### P2 — polish (only if time)
-- [ ] Databricks Free Edition run; LangGraph version of the loop; lineage graph visual in the app.
+- [ ] Databricks Free Edition run (notebook + guide written: `docs/DATABRICKS.md`; not yet run on Databricks); LangGraph version of the loop; lineage graph visual in the app.
 
 ### Submission (13–14 Nov) — see `docs/SUBMISSION_CHECKLIST.md`
 

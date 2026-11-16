@@ -2,6 +2,7 @@
 
 Providers (LLM_PROVIDER in .env):
   offline  no LLM; callers fall back to deterministic logic (demo runs without a key)
+  gemini   Google Gemini through its OpenAI-compatible endpoint (GEMINI_API_KEY, GEMINI_MODEL)
   openai   OpenAI API (OPENAI_API_KEY, OPENAI_MODEL)
   azure    Azure OpenAI (AZURE_OPENAI_* vars)
   ollama   local model served by Ollama through its OpenAI-compatible endpoint
@@ -18,12 +19,15 @@ import os
 from factory import config, registry
 
 
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
 class LLMUnavailable(RuntimeError):
     """Raised when no provider is configured; callers must fall back."""
 
 
 def available() -> bool:
-    return config.LLM_PROVIDER in {"openai", "azure", "ollama"}
+    return config.LLM_PROVIDER in {"gemini", "openai", "azure", "ollama"}
 
 
 def load_prompt(name: str, **values: str) -> str:
@@ -58,6 +62,11 @@ def _client():
     from openai import AzureOpenAI, OpenAI
     opts = {"timeout": config.LLM_TIMEOUT, "max_retries": 1}
     try:
+        if config.LLM_PROVIDER == "gemini":
+            # Free-tier rate limits answer 429; the client waits and retries (honours Retry-After).
+            return (OpenAI(api_key=os.environ["GEMINI_API_KEY"], base_url=GEMINI_BASE_URL,
+                           timeout=config.LLM_TIMEOUT, max_retries=5),
+                    os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
         if config.LLM_PROVIDER == "openai":
             return OpenAI(api_key=os.environ["OPENAI_API_KEY"], **opts), os.getenv("OPENAI_MODEL", "gpt-4o")
         if config.LLM_PROVIDER == "ollama":
