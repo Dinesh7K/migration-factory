@@ -91,8 +91,17 @@ def demo() -> None:
             approve_job(j["job_id"], "reviewer")
             print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
 
+    print("\n[7] WAVE 5 — SAS jobs: AI translation, proven against real SAS output (expected CSVs)")
+    for j in migrate_wave(5, tables):
+        if j["status"] == "ready_for_review":
+            approve_job(j["job_id"], "reviewer")
+            print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
+    for j in registry.list_jobs(status="needs_human"):
+        if j["wave"] == 5:
+            print(f"  {j['job_id']} needs a human: {(j['reason'] or '')[:90]}")
+
     waves = sorted({j["wave"] for j in registry.list_jobs()})
-    print("\n[7] DASHBOARD — fixer calls: " + ", ".join(f"wave {w} = {fixer_calls(w)}" for w in waves))
+    print("\n[8] DASHBOARD — fixer calls: " + ", ".join(f"wave {w} = {fixer_calls(w)}" for w in waves))
     status()
 
 
