@@ -11,3 +11,4 @@ lakehouse/*/*
 .DS_Store
 .streamlit/secrets.toml
 .ipynb_checkpoints/
+sas_kit/

@@ -52,6 +52,7 @@ def test_single_query_is_supported():
 @pytest.mark.parametrize("sql, expected", [
     ("SELECT 1 AS k INTO #t FROM claims; SELECT k FROM #t;", "Multi-statement job (2 statements)"),
     ("INSERT INTO o SELECT policy_id FROM claims", "INSERT statement"),
+    ("SELECT policy_id AS k INTO #t FROM claims", "SELECT ... INTO statement"),
     ("SELECT FROM WHERE (", "parser cannot read"),
     ("-- nothing here\n", "no SQL statement"),
 ])
@@ -261,6 +262,62 @@ def test_duplicate_fingerprint_ignores_the_order_of_and_conditions(tmp_path):
     other = T.fingerprint(_job(tmp_path, "SELECT policy_id, SUM(paid_amount) AS total_paid FROM claims "
                                          "WHERE line_of_business = 'HOME' AND paid_amount > 0 GROUP BY policy_id"))
     assert a == b and a != other
+
+
+def test_route_sqlglot_means_the_guard_lets_the_job_through(tmp_path):
+    """The suggested route and the unsupported-job guard use the same idea of 'one query'."""
+    for sql in ("SELECT policy_id AS k FROM claims", "SELECT policy_id AS k INTO #t FROM claims",
+                SCRIPT, "SELECT FROM WHERE ("):
+        job = _job(tmp_path, sql)
+        assert (T.difficulty(job)["route"] == "sqlglot") == (T.unsupported(job) is None), sql
+
+
+def test_rerunning_triage_keeps_decisions_made_after_triage(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LLM_PROVIDER", "offline")
+    unused = _job(tmp_path, "SELECT region AS k, COUNT(*) AS n FROM policies GROUP BY region",
+                  feeds_report=None, wave=1)
+    manifest = [{**J01, "wave": 1}, {**J13, "wave": 1}, unused]
+    _triage(tmp_path, monkeypatch, manifest)
+    registry.update_job("J01", status="approved")
+    registry.update_job("J13", status="needs_human", attempts=3, reason="Failed reconciliation 3 times")
+    registry.update_job("JX", status="retired")
+    out = _triage(tmp_path, monkeypatch, manifest)
+    assert [out[j]["status"] for j in ("J01", "J13", "JX")] == ["approved", "needs_human", "retired"]
+    assert registry.get_job("J13")["attempts"] == 3 and registry.get_job("J13")["reason"].startswith("Failed")
+    assert registry.get_job("J01")["lineage"]["difficulty"]["tier"] == "easy"   # analysis refreshed
+
+
+def test_restore_only_brings_back_retired_jobs(tmp_path, monkeypatch):
+    from factory.archive.archive import restore_job
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "factory.db")
+    registry.upsert_job({"job_id": "JX", "status": "needs_human", "reason": "triage gate"})
+    with pytest.raises(ValueError, match="not retired"):
+        restore_job("JX")
+    assert registry.get_job("JX")["status"] == "needs_human"
+    registry.update_job("JX", status="retired")
+    restore_job("JX")
+    assert registry.get_job("JX")["status"] == "pending"
+
+
+def test_no_unused_proposal_while_another_jobs_inputs_are_unknown(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LLM_PROVIDER", "offline")   # SAS lineage is then unknown
+    unused = _job(tmp_path, "SELECT region AS k, COUNT(*) AS n FROM policies GROUP BY region",
+                  feeds_report=None, wave=1)
+    out = _triage(tmp_path, monkeypatch, [{**SAS, "wave": 2}, unused])
+    assert out["JX"]["status"] == "needs_human" and "inputs of J10" in out["JX"]["reason"]
+    assert out["J10"]["status"] == "needs_human"
+
+
+def test_deep_review_gate_never_lets_a_complex_job_through_on_a_weak_ai_answer(schema):
+    lin = T.lineage(J13, schema)
+    agree = {"source": "llm", "understood": True, "uncertainties": [], "reads": ["claims", "policies"]}
+    assert T.preflight_reason(J13, lin, agree, deep_review=True) is None
+    for weak, why in [({"source": "offline"}, "requires the configured LLM"),
+                      ({**agree, "understood": False}, "could not confirm"),
+                      ({**agree, "uncertainties": ["row order"]}, "row order"),
+                      ({**agree, "reads": ["claims"]}, "do not agree")]:
+        assert why in T.preflight_reason(J13, lin, weak, deep_review=True)
+    assert T.preflight_reason(J13, lin, {"source": "offline"}, deep_review=False) is None
 
 
 def test_sas_data_step_named_by_a_macro_variable_is_found(tmp_path):

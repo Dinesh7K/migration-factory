@@ -1,7 +1,7 @@
 # MigrateGuard — an AI migration factory for legacy insurance data pipelines
 
 **EXL × Trinity Data & AI Hackathon 2026 · Challenge 03: Agentic data platform modernisation**
-Team: _<team name>_ · Members: _<names>_
+Team: **Team MigrateGuard** · Members: Eesha Inamdar, Dinesh K, Bhumi Darji
 
 > Most tools only convert code. MigrateGuard decides what **not** to migrate, **proves** every migrated job
 > against adversarial data down to the field, and gets **cheaper with each wave**.
@@ -20,7 +20,7 @@ data → triage → [translate → break → run both → reconcile → fix] ×3
 |---|---|---|
 | Triage | T-SQL parsing and column lineage with sqlglot; SAS structure with tree-sitter-sas and AI-estimated, catalog-checked lineage; known legacy-vs-Spark gaps; duplicate/unused retirement proposals (never auto-retired); complex or structurally uncertain jobs get a context-rich AI explanation and lineage cross-check, with unresolved cases sent to human review | sqlglot, tree-sitter-sas, LLM |
 | Translate | Rule-based T-SQL → Spark SQL first; LLM only for what rules can't; learned rules applied | sqlglot, LLM |
-| Break | Adversarial edge-case data: case, trailing spaces, NULLs, dates, rounding | Python, LLM |
+| Break | Adversarial edge-case data: lowercase and trailing-space variants for `=`, `IN` and `LIKE` filters (NULLs, dates, rounding and LLM-proposed cases planned) | Python |
 | Reconcile | Row counts, column totals, field-level diffs | pandas |
 | Fix | LLM repairs code from the diff and explains it in plain English (max 3 tries) | LLM |
 | Approve | Human sign-off; regulatory jobs always need it; full audit log | Streamlit, SQLite |
@@ -72,6 +72,15 @@ docs/         architecture · Responsible AI note · submission checklist
 See [`docs/responsible_ai.md`](docs/responsible_ai.md).
 
 ## AI tools used (declaration)
-- _e.g. Claude (Anthropic) / Claude Code — scaffolding, boilerplate, test data, documentation._
-- LLM used inside the product: `qwen2.5-coder` (7B) running locally through Ollama; OpenAI / Azure OpenAI are optional providers.
-- _Existing open-source code used: sqlglot, DuckDB, pandas, Faker, networkx, Streamlit._
+The idea, design and decisions behind MigrateGuard are the team's own. AI tools were used as follows:
+- **Claude (Anthropic)**: to understand the hackathon brief and challenge, to research existing migration
+  tools, approaches and standards, and to draft the solution deck and submission documents
+  (architecture diagram, Responsible AI note, this README). The team reviewed and edited all of it.
+- **Claude Code (Anthropic)**: AI coding assistant used during development (repo guide in `CLAUDE.md`). _[To confirm: what it was used for, e.g. scaffolding, boilerplate, tests, documentation.]_
+- **LLM inside the product**: `qwen2.5-coder` (7B) running locally through Ollama, so no code or data leaves
+  the machine. OpenAI / Azure OpenAI are optional providers (written, not yet tested with a real key).
+  The product also runs fully offline with no LLM.
+
+**Existing open-source code used:** sqlglot, tree-sitter-sas, PySpark, DuckDB, pandas, pyarrow, Faker,
+networkx, Streamlit, PyYAML, python-dotenv, the `openai` Python client, pytest.
+**Data:** freMTPL2 (Dutang & Charpentier, *CASdatasets*, GPL-2.0) and Faker-generated synthetic data. No personal data.

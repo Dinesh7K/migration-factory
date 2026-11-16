@@ -10,13 +10,17 @@
     python run.py restore JOB     bring an archived job back
     python run.py status          show all jobs
     python run.py demo            full scripted demo (resets state)
+    python run.py sas-kit JOB     data + SAS program to produce a SAS job's expected CSV in real SAS
 """
 import sys
+
+import yaml
 
 from factory import config, registry
 from factory.agents.migrate import approve_job, migrate_wave
 from factory.archive.archive import restore_job
 from factory.data_gen.build_db import build_db, load_tables
+from factory.runners.sas_kit import build_kit
 from factory.runners.spark import engine_label
 from factory.triage.triage import approve_retire, triage
 
@@ -87,9 +91,34 @@ def demo() -> None:
             approve_job(j["job_id"], "reviewer")
             print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
 
+    print("\n[7] WAVE 5 — SAS jobs: AI translation, proven against real SAS output (expected CSVs)")
+    for j in migrate_wave(5, tables):
+        if j["status"] == "ready_for_review":
+            approve_job(j["job_id"], "reviewer")
+            print(f"  reviewer approved {j['job_id']} (method: {j['method']})")
+    for j in registry.list_jobs(status="needs_human"):
+        if j["wave"] == 5:
+            print(f"  {j['job_id']} needs a human: {(j['reason'] or '')[:90]}")
+
     waves = sorted({j["wave"] for j in registry.list_jobs()})
-    print("\n[7] DASHBOARD — fixer calls: " + ", ".join(f"wave {w} = {fixer_calls(w)}" for w in waves))
+    print("\n[8] DASHBOARD — fixer calls: " + ", ".join(f"wave {w} = {fixer_calls(w)}" for w in waves))
     status()
+
+
+def sas_kit(job_id: str) -> None:
+    """Build the SAS kit for one job listed in jobs.yaml (`jobs:` or `sas_awaiting_expected:`)."""
+    manifest = yaml.safe_load(config.JOBS_YAML.read_text())
+    jobs = {j["job_id"]: j for j in (manifest.get("jobs") or []) + (manifest.get("sas_awaiting_expected") or [])}
+    if job_id not in jobs:
+        raise SystemExit(f"Usage: python run.py sas-kit JOB  (SAS jobs in jobs.yaml: "
+                         f"{', '.join(j for j, v in jobs.items() if v['lang'] == 'sas') or 'none'})")
+    try:
+        kit = build_kit(jobs[job_id], load_tables())
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+    print(f"  kit written to {kit.relative_to(config.ROOT)}/ and input fingerprint saved")
+    print(f"  next: run {kit.relative_to(config.ROOT)}/run_{job_id}.sas in SAS OnDemand, then save its "
+          f"{job_id}.csv as legacy_jobs/expected/{job_id}.csv")
 
 
 def main(argv: list[str]) -> None:
@@ -119,6 +148,8 @@ def main(argv: list[str]) -> None:
         status()
     elif cmd == "demo":
         demo()
+    elif cmd == "sas-kit":
+        sas_kit(argv[2] if len(argv) > 2 else "")
     else:
         print(__doc__)
 

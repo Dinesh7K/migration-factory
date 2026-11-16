@@ -33,6 +33,11 @@ def archive_job(job: dict, approved_by: str) -> str:
 
 
 def restore_job(job_id: str, by: str = "reviewer") -> None:
+    """Bring a RETIRED job back to 'pending'. Any other status is refused, so restore cannot
+    be used to push a job that triage sent to a person (needs_human) into migration."""
+    job = registry.get_job(job_id)
+    if not job or job["status"] != "retired":
+        raise ValueError(f"{job_id} is {job['status'] if job else 'unknown'}, not retired")
     registry.update_job(job_id, status="pending", reason="Restored from archive")
     registry.remove_archive(job_id)
     registry.log(job_id, by, "restored", None)

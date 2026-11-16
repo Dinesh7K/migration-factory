@@ -4,6 +4,9 @@
 
 The LLM is allowed to be wrong: nothing reaches `ready_for_review` unless reconciliation passes.
 After MAX_ATTEMPTS failures → `needs_human`. Humans approve via approve_job() (or the app).
+A job also stops at `needs_human` (0 attempts, nothing proven) when translation fails (LLM down,
+AI SQL failing its checks) or when there is no legacy output to compare with (SAS without its
+expected CSV, or a CSV made from different input data): the draft code is kept for the reviewer, and the rest of the wave carries on.
 
 Fixer:
   llm_fix      LLM reads code + diffs, returns new code + plain-English reason (prompts/fix.md)
@@ -22,9 +25,10 @@ from factory import config, llm, registry
 from factory.breaker.breaker import break_data
 from factory.patterns import rules
 from factory.reconcile.reconcile import ReconResult, reconcile
-from factory.runners.legacy import run_legacy
+from factory.runners.legacy import has_legacy_output, run_legacy, sas_expected_path
+from factory.runners.sas_kit import input_mismatch
 from factory.runners.spark import run_new
-from factory.translate.translate import translate
+from factory.translate.translate import TranslationError, translate
 
 
 def offline_fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str, str | None]:
@@ -107,9 +111,32 @@ def fix(job: dict, code: str, result: ReconResult) -> tuple[str | None, str, str
     return out
 
 
+def _stop_for_human(jid: str, reason: str, **fields) -> dict:
+    """End a job's migration before any reconcile attempt: needs_human, 0 attempts, with the reason."""
+    print(f"    → needs_human: {reason}")
+    registry.update_job(jid, status="needs_human", attempts=0, reason=reason,
+                        **{"confidence": 0.0, "method": "not translated", **fields})
+    registry.log(jid, "migrator", "stopped_before_reconcile", {"reason": reason})
+    return registry.get_job(jid)
+
+
 def migrate_job(job: dict, tables: dict[str, pd.DataFrame]) -> dict:
+    """translate → break → run both → reconcile → fix (≤ MAX_ATTEMPTS). Ends in ready_for_review
+    (reconciliation passed) or needs_human (translation failed, nothing to prove against, or
+    still failing after MAX_ATTEMPTS)."""
     jid = job["job_id"]
-    code, confidence, method = translate(job)
+    try:
+        code, confidence, method = translate(job, schema={t: list(df.columns) for t, df in tables.items()})
+    except TranslationError as e:
+        return _stop_for_human(jid, f"Translation failed: {e}")
+    if not has_legacy_output(job):
+        return _stop_for_human(
+            jid, "Translated draft cannot be proven: no legacy output to reconcile against "
+                 f"(run the {job['lang'].upper()} job once and save it as {sas_expected_path(job).relative_to(config.ROOT)})",
+            target_code=code, confidence=confidence, method=method)
+    if job["lang"] == "sas" and (problem := input_mismatch(job, tables)):
+        return _stop_for_human(jid, f"Translated draft cannot be proven: {problem}",
+                               target_code=code, confidence=confidence, method=method)
     test_tables, added = break_data(job, tables)
     reason, pattern = "", None
 
