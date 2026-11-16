@@ -10,16 +10,22 @@ Providers (LLM_PROVIDER in .env):
 
 Any provider failure (server down, timeout, missing key) is raised as LLMUnavailable so
 callers fall back to deterministic logic instead of crashing the demo.
+Rate limits (HTTP 429, e.g. Gemini's free tier) are not failures: calls are spaced out
+(LLM_MIN_INTERVAL seconds, default 4 for gemini) and a 429 is waited out and retried
+(RATE_LIMIT_WAITS) before the call is given up.
 TODO (agent dev): test openai/azure paths with a real key.
 """
 from __future__ import annotations
 
 import os
+import time
 
 from factory import config, registry
 
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+RATE_LIMIT_WAITS = (10, 20, 30, 45)  # seconds to wait after each 429 before trying again
+_last_call = 0.0
 
 
 class LLMUnavailable(RuntimeError):
@@ -44,7 +50,7 @@ def complete(prompt: str, *, job_id: str | None, purpose: str, system: str | Non
 
     try:
         client, model = _client()
-        resp = client.chat.completions.create(model=model, messages=messages, temperature=0)
+        resp = _create_with_rate_limit(client, model, messages, job_id, purpose)
     except LLMUnavailable:
         raise
     except Exception as e:  # server down, timeout, bad key, model not pulled, ...
@@ -57,15 +63,50 @@ def complete(prompt: str, *, job_id: str | None, purpose: str, system: str | Non
     return answer
 
 
+def _min_interval() -> float:
+    default = "4" if config.LLM_PROVIDER == "gemini" else "0"
+    return float(os.getenv("LLM_MIN_INTERVAL", default))
+
+
+def _create_with_rate_limit(client, model: str, messages: list[dict], job_id: str | None, purpose: str):
+    """One chat completion. Spaces calls by _min_interval(); on HTTP 429 waits (Retry-After if the
+    server sends it, else RATE_LIMIT_WAITS) and tries again. Other errors propagate at once."""
+    from openai import RateLimitError
+    global _last_call
+    for attempt in range(len(RATE_LIMIT_WAITS) + 1):
+        gap = _min_interval() - (time.monotonic() - _last_call)
+        if gap > 0:
+            time.sleep(gap)
+        _last_call = time.monotonic()
+        try:
+            return client.chat.completions.create(model=model, messages=messages, temperature=0)
+        except RateLimitError as e:
+            if attempt == len(RATE_LIMIT_WAITS):
+                raise
+            wait = _retry_after(e) or RATE_LIMIT_WAITS[attempt]
+            print(f"  llm: rate limited by {config.LLM_PROVIDER}; waiting {wait:.0f}s and trying again")
+            registry.log(job_id, "llm", f"llm_{purpose}_rate_limited", {"provider": config.LLM_PROVIDER,
+                                                                         "attempt": attempt + 1, "wait_s": wait})
+            time.sleep(wait)
+
+
+def _retry_after(e) -> float | None:
+    """Seconds from a Retry-After header, if the server sent one (capped at 60)."""
+    try:
+        return min(float(e.response.headers.get("retry-after")), 60.0)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def _client():
     """Build the client for the configured provider. Returns (client, model_name)."""
     from openai import AzureOpenAI, OpenAI
     opts = {"timeout": config.LLM_TIMEOUT, "max_retries": 1}
     try:
         if config.LLM_PROVIDER == "gemini":
-            # Free-tier rate limits answer 429; the client waits and retries (honours Retry-After).
+            # 429s are handled by _create_with_rate_limit (longer waits than the client's own retry).
             return (OpenAI(api_key=os.environ["GEMINI_API_KEY"], base_url=GEMINI_BASE_URL,
-                           timeout=config.LLM_TIMEOUT, max_retries=5),
+                           timeout=config.LLM_TIMEOUT, max_retries=1),
                     os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
         if config.LLM_PROVIDER == "openai":
             return OpenAI(api_key=os.environ["OPENAI_API_KEY"], **opts), os.getenv("OPENAI_MODEL", "gpt-4o")
