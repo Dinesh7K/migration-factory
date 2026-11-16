@@ -122,3 +122,32 @@ def test_duckdb_mode_never_starts_spark(monkeypatch):
     monkeypatch.setattr(runner, "_session", boom)
     assert runner.engine() == "duckdb" and "development mode" in runner.engine_label()
     assert _by_policy(runner.run_new(SQL, {"claims": CLAIMS}))["P102"]["total_paid"] == 1000.0
+
+
+def test_spark_connect_metrics_do_not_break_saving_to_parquet(monkeypatch, tmp_path):
+    """Databricks serverless returns pandas results with PlanMetrics objects in .attrs; the gold
+    write (to_parquet) must not choke on them."""
+    class PlanMetrics:  # stands in for Spark Connect's object, which is not JSON serializable
+        pass
+
+    class FakeResult:
+        def toPandas(self):
+            df = pd.DataFrame({"policy_id": ["P1"], "total_paid": [1.0]})
+            df.attrs["metrics"] = [PlanMetrics()]
+            return df
+
+    class FakeView:
+        def createOrReplaceTempView(self, name):
+            pass
+
+    class FakeSpark:
+        def createDataFrame(self, *a, **k):
+            return FakeView()
+
+        def sql(self, q):
+            return FakeResult()
+
+    monkeypatch.setattr(runner, "_session", lambda: FakeSpark())
+    out = runner._run_pyspark(SQL, {"claims": CLAIMS})
+    out.to_parquet(tmp_path / "gold.parquet", index=False)
+    assert out.attrs == {}

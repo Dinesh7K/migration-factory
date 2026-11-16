@@ -114,6 +114,9 @@ def _run_pyspark(spark_sql: str, tables: dict[str, pd.DataFrame]) -> pd.DataFram
             sdf = spark.createDataFrame(df.astype(object).where(df.notna(), None), schema=_ddl(arrow.schema))
         sdf.createOrReplaceTempView(name)
     out = spark.sql(spark_sql).toPandas()
+    # Spark Connect (Databricks serverless) attaches query metrics (PlanMetrics objects) to
+    # DataFrame.attrs; pandas writes attrs into parquet metadata as JSON and fails on them.
+    out.attrs = {}
     for c in out.columns:
         if out[c].dtype == object and out[c].map(lambda v: isinstance(v, decimal.Decimal)).any():
             out[c] = out[c].astype(float)
