@@ -111,7 +111,7 @@ Rule (registry `rules` table):
 - [x] `agents/migrate.py`: `llm_fix()` when a provider is set (prompt in `factory/prompts/fix.md`), falling back to `offline_fix()`; returns plain-English reason. When the LLM picks a library pattern the rewrite comes from the library.
 - [x] `runners/spark.py`: `_run_pyspark()` (PySpark 4, Java 17/21).
 - [ ] `runners/legacy.py`: `_run_sqlserver()` is written (pandas `to_sql` via SQLAlchemy + pyodbc) but has never been run against a live server: test it.
-- [ ] Legacy jobs: 16 T-SQL done (J01–J09, J11–J17: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: MERGE, and 3–4 SAS (RETAIN, BY/FIRST./LAST., MERGE) with expected CSVs. J10 waits in `jobs.yaml` `sas_awaiting_expected:`; steps in `docs/HANDOVER_SAS.md` (owner: Eesha).
+- [ ] Legacy jobs: 16 T-SQL done (J01–J09, J11–J17: joins, window function, CASE, dates, IN, LIKE, NULL handling, rounding, integer division). Still to do: T-SQL MERGE. SAS: J10 (RETAIN + BY), J18 (FIRST./LAST.), J19 (DATA-step MERGE) have expected CSVs from SAS OnDemand and run in wave 5; steps in `docs/HANDOVER_SAS.md` (owner: Eesha).
 
 ### P1 — what wins
 - [x] `triage/triage.py`: duplicate proof + complexity score; column-level lineage and known gaps (parser, exact); multi-statement / DML / unparseable jobs → `needs_human` at triage; LLM job purpose + risk second opinion (prompts/triage.md), stored in `jobs.triage_ai`. The AI review is advisory and can only add caution: it can escalate risk, and for hard or macro/uncertain SAS jobs a missing, uncertain or disagreeing AI review sends the job to `needs_human`; an AI "understood" never approves, retires or proves anything. Re-running triage keeps statuses set later (approved, retired, ready_for_review, needs_human after migration attempts); `restore` only accepts retired jobs. Lineage method is recorded in `lineage["source"]`: `parser` (one query, or a multi-statement script traced through its temp tables), `parser_partial` (UPDATE/MERGE/procedure steps skipped and listed), `ai_estimated` (SAS, procedures, unparseable SQL: LLM estimate from prompts/lineage.md, checked against the catalog, unknown names in `unverified`), `none`.
@@ -131,8 +131,14 @@ J01 FAIL £500 on one policy → fixer applies `string_equality` → PASS → ap
 J04 PASS; J05 (wave 2) passes first try with `sqlglot+rules:R01`.
 Wave 3: J06 (`string_in_list`), J07 (`integer_division`), J08 (`like_case_insensitive`) each FAIL → fix → PASS →
 rules R02–R04; J09, J11, J12, J13 pass first try. Wave 4: J14, J15, J16 and J17 pass first try using the new rules.
-Fixer calls: wave 1 = 1, wave 2 = 0, wave 3 = 3, wave 4 = 0. Same result with `LLM_PROVIDER=ollama` and `offline`
-(`tests/test_pipeline.py::test_demo_story_end_to_end` checks the offline run).
+Wave 5 (SAS, legacy truth = `legacy_jobs/expected/<job>.csv` from SAS OnDemand, with its `.inputs.json`):
+J10 (RETAIN + BY), J18 (BY + FIRST./LAST.), J19 (DATA-step MERGE). The LLM translates them, so offline they stop at
+`needs_human`, and their inputs are unknown, so J03 cannot be proven unused and goes to `needs_human` instead of
+being retired (by design: no "unused" claim rests on unknown lineage). With `LLM_PROVIDER=ollama` (qwen2.5-coder:3b)
+the AI estimates SAS lineage, J03 is retired as before, and J10 passes and is approved; J18 (AI SQL fails the
+column check) and J19 (0 vs NULL for policies with no claims) stay `needs_human`.
+Fixer calls: wave 1 = 1, wave 2 = 0, wave 3 = 3, wave 4 = 0. Waves 1–4 are the same with `LLM_PROVIDER=ollama` and
+`offline` (`tests/test_pipeline.py::test_demo_story_end_to_end` checks the offline run).
 
 ## 8. Commands
 ```

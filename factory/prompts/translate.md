@@ -24,6 +24,7 @@ Semantic differences to preserve the LEGACY behaviour:
   order; DATA-step MERGE matches by BY values, not like a SQL join; missing numeric (.) sorts lowest
   and is skipped by SUM/MEAN; character comparison ignores trailing blanks.
 - NULL handling, integer division, ROUND behaviour, date functions.
+- SAS round(x, 0.0001) rounds to a unit; in Spark write ROUND(x, 4) (number of decimal places).
 
 Rules for the answer:
 - ONE Spark SQL SELECT query (CTEs allowed). No CREATE, INSERT, INTO or other statements.
