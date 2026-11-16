@@ -77,9 +77,11 @@ The idea, design and decisions behind MigrateGuard are the team's own. AI tools 
   tools, approaches and standards, and to draft the solution deck and submission documents
   (architecture diagram, Responsible AI note, this README). The team reviewed and edited all of it.
 - **Claude Code (Anthropic)**: AI coding assistant used during development (repo guide in `CLAUDE.md`). _[To confirm: what it was used for, e.g. scaffolding, boilerplate, tests, documentation.]_
-- **LLM inside the product**: `qwen2.5-coder` (7B) running locally through Ollama, so no code or data leaves
-  the machine. OpenAI / Azure OpenAI are optional providers (written, not yet tested with a real key).
-  The product also runs fully offline with no LLM.
+- **LLM inside the product**: Google **Gemini** (`gemini-3.5-flash-lite`, through its OpenAI-compatible API) for the
+  Databricks run; `qwen2.5-coder` running locally through Ollama on laptops, so no code or data leaves the
+  machine. Only code, table/column names and small result diffs are sent to Gemini, never personal data
+  (all data is freMTPL2 or synthetic). OpenAI / Azure OpenAI are optional providers (written, not yet tested
+  with a real key). The product also runs fully offline with no LLM.
 
 **Existing open-source code used:** sqlglot, tree-sitter-sas, PySpark, DuckDB, pandas, pyarrow, Faker,
 networkx, Streamlit, PyYAML, python-dotenv, the `openai` Python client, pytest.
