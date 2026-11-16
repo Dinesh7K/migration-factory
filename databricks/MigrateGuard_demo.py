@@ -11,7 +11,38 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q -r ../requirements-databricks.txt
+# Install the factory's packages (pyspark/pandas come with Databricks).
+import subprocess
+import sys
+
+def find_repo() -> str:
+    """The migration-factory Git folder, wherever this notebook runs from (interactive or job)."""
+    import os
+    cands = []
+    try:
+        nb = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+        nb = nb if nb.startswith("/Workspace") else "/Workspace" + nb
+        cands.append(nb.rsplit("/databricks/", 1)[0])
+    except Exception:
+        pass
+    cands += [os.path.abspath(".."), os.getcwd()]
+    try:
+        cands.append(f"/Workspace/Users/{spark.sql('SELECT current_user()').first()[0]}/migration-factory")
+    except Exception:
+        pass
+    for c in cands:
+        if os.path.exists(os.path.join(c, "requirements-databricks.txt")):
+            return c
+    raise FileNotFoundError(f"migration-factory folder not found; looked in {cands}")
+
+
+import os
+
+# Same protection %pip uses: never upgrade or replace Databricks' own core packages.
+core = "/databricks/.core_packages/immutable-package-constraints.txt"
+subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
+                       *(["-c", core] if os.path.exists(core) else []),
+                       "-r", f"{find_repo()}/requirements-databricks.txt"])
 
 # COMMAND ----------
 
@@ -26,7 +57,28 @@ import sys
 CATALOG, SCHEMA = "workspace", "migrateguard"   # Free Edition's default catalog is `workspace`
 VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/files"
 
-REPO = os.path.abspath("..")                     # the Git folder this notebook lives in
+def find_repo() -> str:
+    """The migration-factory Git folder, wherever this notebook runs from (interactive or job)."""
+    import os
+    cands = []
+    try:
+        nb = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+        nb = nb if nb.startswith("/Workspace") else "/Workspace" + nb
+        cands.append(nb.rsplit("/databricks/", 1)[0])
+    except Exception:
+        pass
+    cands += [os.path.abspath(".."), os.getcwd()]
+    try:
+        cands.append(f"/Workspace/Users/{spark.sql('SELECT current_user()').first()[0]}/migration-factory")
+    except Exception:
+        pass
+    for c in cands:
+        if os.path.exists(os.path.join(c, "requirements-databricks.txt")):
+            return c
+    raise FileNotFoundError(f"migration-factory folder not found; looked in {cands}")
+
+
+REPO = find_repo()                               # the Git folder this notebook lives in
 sys.path.insert(0, REPO)
 os.chdir(REPO)
 
